@@ -150,7 +150,7 @@ class Hybrid_OWR_CPD:
                 for i, regime in enumerate(self.regimes):
                     coh = self._compute_rkhs_coherence(self.X_prime, regime)
                     coherence_scores.append(coh)
-                    print(f"    - vs Regime {i}: MMD Coherence = {coh:.4f}")
+                    print(f"    - vs Regime {i}: Pearson MMD Coherence = {coh:.4f}")
                 
                 best_i = np.argmax(coherence_scores) if coherence_scores else -1
                 max_coh = coherence_scores[best_i] if coherence_scores else -float('inf')

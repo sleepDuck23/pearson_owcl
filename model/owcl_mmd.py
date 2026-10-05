@@ -69,7 +69,7 @@ class OWR_CPD:
             self.regime_log.append(-1)
             
             if len(self.X) == self.n:
-                # Store initial regime representative
+                # Store initial regime representative (as a pure list)
                 self.regimes.append(list(self.X))
                 self.active_regime_id = 0
                 self.state = "WARMUP_Y"
@@ -104,7 +104,7 @@ class OWR_CPD:
                 # Confirmed Change Point
                 cp_time = self.t
                 self.global_changepoints.append(cp_time)
-                print(f"Time {cp_time} (detected at {self.t}): *** CHANGE CONFIRMED *** (MMD={score:.4f})")
+                print(f"\nTime {cp_time} (detected at {self.t}): *** CHANGE CONFIRMED *** (MMD={score:.4f} > {self.eta})")
                 
                 self.consec = 0
                 self.X_prime = []
@@ -116,29 +116,35 @@ class OWR_CPD:
             self.regime_log.append(-1)
             
             if len(self.X_prime) == self.n:
-                # Find best matching regime (Eq. 5)
-                best_i = -1
-                max_coh = -float('inf')
+                print(f"\n  [Classification Phase @ Time {self.t}]")
+                coherence_scores = []
                 
+                # Check coherence against all stored regimes
                 for i, regime_data in enumerate(self.regimes):
                     coh = self._compute_coherence(self.X_prime, regime_data)
-                    if coh > max_coh:
-                        max_coh = coh
-                        best_i = i
+                    coherence_scores.append(coh)
+                    print(f"    - vs Regime {i}: MMD Coherence = {coh:.4f}")
+                
+                # Identify the best match
+                if coherence_scores:
+                    best_i = np.argmax(coherence_scores)
+                    max_coh = coherence_scores[best_i]
+                else:
+                    best_i = -1
+                    max_coh = -float('inf')
                         
-                # Assignment decision
+                # Classification Decision
                 if max_coh >= self.nu:
-                    print(f" -> Assigned to KNOWN Regime {best_i} (Coherence={max_coh:.4f} >= {self.nu})")
+                    print(f"  -> RESULT: Assigned to KNOWN Regime {best_i} (Max = {max_coh:.4f} >= {self.nu})\n")
                     self.active_regime_id = best_i
-                    # Update representative with the new pure window
                     self.regimes[best_i] = list(self.X_prime)
                 else:
                     new_id = len(self.regimes)
-                    print(f" -> Initiating NOVEL Regime {new_id} (Coherence={max_coh:.4f} < {self.nu})")
+                    print(f"  -> RESULT: Initiating NOVEL Regime {new_id} (Max = {max_coh:.4f} < {self.nu})\n")
                     self.active_regime_id = new_id
                     self.regimes.append(list(self.X_prime))
                 
-                # Restart detection from the pure window
+                # Restart Active Monitoring
                 self.X = list(self.X_prime)
                 self.Y = []
                 self.state = "WARMUP_Y"
