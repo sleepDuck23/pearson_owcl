@@ -30,8 +30,8 @@ def main():
     true_cps = [1000, 2000, 3000, 4000, 5000]  # True change points
     n = 150  # ref Window size
     m = 50  # test Window size
-    gamma = 0.01  # RBF kernel bandwidth
-    k_conf = 3  # Consecutive windows to confirm change
+    gamma = 0.1  # RBF kernel bandwidth
+    k_conf = 6  # Consecutive windows to confirm change
     
     print("Generating Open-World stream data...\n")
     data, actual_cps = generate_regime_stream(
@@ -55,8 +55,8 @@ def main():
     pearson_model = Pearson_OWR_CPD(
         n=n, 
         m=m, 
-        tau=0.1,  
-        nu=0.90,  
+        tau=0.5,  
+        nu=0.1,  
         k_conf=k_conf, 
         reg_lambda=1e-3, 
         gamma=gamma
@@ -65,7 +65,7 @@ def main():
     hybrid_model = Hybrid_OWR_CPD(
         n=n, 
         m=m, 
-        tau=0.1,  
+        tau=0.5,  
         nu=0.90,  
         k_conf=k_conf, 
         reg_lambda=1e-5, 
@@ -75,7 +75,7 @@ def main():
     mahalanobis_model = Mahalanobis_OWR_CPD(
         n=n, 
         m=m, 
-        tau=0.1,  
+        tau=0.5,  
         nu=0.08,  
         k_conf=k_conf, 
         reg_lambda=1e-5, 
