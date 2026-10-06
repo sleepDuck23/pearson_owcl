@@ -55,8 +55,8 @@ def main():
     pearson_model = Pearson_OWR_CPD(
         n=n, 
         m=m, 
-        tau=0.5,  
-        nu=0.1,  
+        tau=0.75,  
+        nu=0.50,  
         k_conf=k_conf, 
         reg_lambda=1e-3, 
         gamma=gamma
@@ -65,7 +65,7 @@ def main():
     hybrid_model = Hybrid_OWR_CPD(
         n=n, 
         m=m, 
-        tau=0.5,  
+        tau=0.75,  
         nu=0.90,  
         k_conf=k_conf, 
         reg_lambda=1e-5, 
@@ -75,7 +75,7 @@ def main():
     mahalanobis_model = Mahalanobis_OWR_CPD(
         n=n, 
         m=m, 
-        tau=0.5,  
+        tau=0.75,  
         nu=0.08,  
         k_conf=k_conf, 
         reg_lambda=1e-5, 
