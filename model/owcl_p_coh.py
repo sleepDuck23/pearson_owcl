@@ -1,7 +1,7 @@
 import numpy as np
 
 class Hybrid_OWR_CPD:
-    def __init__(self, n, m, tau, nu, k_conf, reg_lambda=1e-5, gamma=0.1):
+    def __init__(self, n, m, tau, nu, k_conf, reg_lambda=1e-5, gamma=0.1, factor=1.0):
         """
         Hybrid Open-World Change-Point Detection.
         - Detection: Pearson Divergence (O(N^2) Schur updates with metric tensor W)
@@ -15,7 +15,7 @@ class Hybrid_OWR_CPD:
         self.k_conf = k_conf        
         self.reg_lambda = reg_lambda 
         self.gamma = gamma          # Will be dynamically overwritten by the median heuristic
-        
+        self.factor = factor        # Optional scaling factor
         self.t = 0
         self.state = "INIT_REGIME" 
         self.consec = 0
@@ -87,7 +87,7 @@ class Hybrid_OWR_CPD:
         if median_sq_dist == 0:
             median_sq_dist = 1e-5 # Prevent division by zero
             
-        self.gamma = 2.5 * (1.0 / (2.0 * median_sq_dist))
+        self.gamma = self.factor * (1.0 / (2.0 * median_sq_dist))
         
         # Compute K_XX using the newly tuned gamma
         K_XX = np.exp(-self.gamma * dist_sq)
