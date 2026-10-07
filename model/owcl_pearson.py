@@ -39,13 +39,31 @@ class Pearson_OWR_CPD:
         self.pearson_div_scores = []
         self.regime_log = []
 
-    def _sq_distances(self, X, Y):
+    def _sq_distances_v0(self, X, Y):
         """Computes the squared Euclidean distance matrix."""
         X = np.atleast_2d(X)
         Y = np.atleast_2d(Y)
         X2 = np.sum(X**2, axis=1).reshape(-1, 1)
         Y2 = np.sum(Y**2, axis=1).reshape(1, -1)
         dist_sq = X2 + Y2 - 2 * np.dot(X, Y.T)
+        return np.maximum(dist_sq, 0.0)
+
+    def _sq_distances(self, X, Y):
+        """
+        Computes scale-invariant squared Euclidean distance by 
+        internally projecting data onto a unit hypersphere.
+        """
+        X = np.atleast_2d(X)
+        Y = np.atleast_2d(Y)
+        
+        # 1. Internal Normalization (makes the model scale-invariant)
+        X_norm = X / np.maximum(np.linalg.norm(X, axis=1, keepdims=True), 1e-12)
+        Y_norm = Y / np.maximum(np.linalg.norm(Y, axis=1, keepdims=True), 1e-12)
+        
+        # 2. Compute distance in Cosine space
+        # Since vectors are unit length, X^2 + Y^2 is exactly 2.0
+        dist_sq = 2.0 - 2.0 * np.dot(X_norm, Y_norm.T)
+        
         return np.maximum(dist_sq, 0.0)
 
     def _rbf_kernel(self, X, Y, gamma_override=None):
@@ -72,13 +90,18 @@ class Pearson_OWR_CPD:
         if median_sq_dist == 0:
             median_sq_dist = 1e-5 # Prevent division by zero
             
-        self.gamma = 1.0 / (2.0 * median_sq_dist)
+        self.gamma = 2.5 * (1.0 / (2.0 * median_sq_dist))
         
         # Compute K_XX using the newly tuned gamma
         K_XX = np.exp(-self.gamma * dist_sq)
         
         # Compute exact inverse metric tensor
         W = np.linalg.inv(K_XX + self.reg_lambda * np.eye(len(X_arr)))
+
+        # Diagnostic prints
+        print(f"  [Debug] K_XX Condition Number: {np.linalg.cond(K_XX):.2e}")
+        print(f"  [Debug] Distance Variance: {np.var(pairwise_sq_dists):.4f}")
+        print(f"  [Debug] K_XX Mean Off-Diagonal: {np.mean(K_XX[np.triu_indices_from(K_XX, k=1)]):.4f}")
         
         return W, self.gamma
 
