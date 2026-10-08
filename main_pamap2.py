@@ -34,7 +34,7 @@ def run_experiment():
     # PAMAP2 is sampled at 100Hz (vs WISDM's 20Hz). 
     # To capture the same physical time duration, we must increase the window sizes.
     # n=750 is 7.5 seconds of physical movement at 100Hz.
-    n = 500
+    n = 200
     m = 100
     k_conf = 6
     
@@ -43,8 +43,8 @@ def run_experiment():
     print(f"Building PAMAP2 stream for sequence: {sequence}")
     
     # Fetch data directly from our dedicated manager
-    #activities, block_size = load_pamap2_full_blocks(block_size=1500) # 15 seconds per block
-    activities, block_size = load_pamap2_blocks(block_size=1500) # 15 seconds per block
+    activities, block_size = load_pamap2_full_blocks(block_size=1500) # 15 seconds per block
+    #activities, block_size = load_pamap2_blocks(block_size=1500) # 15 seconds per block
     stream, true_cps = build_stream(sequence, activities, block_size=1500)
     
     # Preprocessing
@@ -59,10 +59,10 @@ def run_experiment():
         print("Skipping PCA. Streaming 3D signal directly...")
 
     # Initialize Models
-    mmd_model = OWR_CPD(n=n, m=m, eta=0.75, nu=0.90, k_conf=k_conf, factor=1.0)
-    pearson_model = Pearson_OWR_CPD(n=n, m=m, tau=0.70, nu=0.71, k_conf=k_conf, reg_lambda=0.075, factor=0.90)
-    hybrid_model = Hybrid_OWR_CPD(n=n, m=m, tau=0.70, nu=0.96, k_conf=k_conf, reg_lambda=0.01, factor=0.90)
-    mahalanobis_model = Mahalanobis_OWR_CPD(n=n, m=m, tau=0.70, nu=0.05, k_conf=k_conf, reg_lambda=0.05, factor=0.90)
+    mmd_model = OWR_CPD(n=n, m=m, eta=0.75, nu=0.95, k_conf=k_conf, factor=1.0)
+    pearson_model = Pearson_OWR_CPD(n=n, m=m, tau=0.80, nu=0.71, k_conf=k_conf, reg_lambda=20.0, factor=1.0)
+    hybrid_model = Hybrid_OWR_CPD(n=n, m=m, tau=0.80, nu=0.96, k_conf=k_conf, reg_lambda=5.0, factor=1.0)
+    mahalanobis_model = Mahalanobis_OWR_CPD(n=n, m=m, tau=0.80, nu=0.05, k_conf=k_conf, reg_lambda=10.0, factor=1.0)
 
     total_steps = len(stream_processed)
     print(f"Starting concurrent monitoring (Total steps: {total_steps})...")

@@ -15,7 +15,7 @@ def load_wisdm_data():
     Simulating 7 distinct physical activities (WISDM classes: Walk, Jog, Stairs, Sit, Stand, etc.)
     """
     print("Loading WISDM dataset...")
-    block_size = 300
+    block_size = 2500
     np.random.seed(42)
     
     activities = {
@@ -51,6 +51,7 @@ def run_experiment():
     n = 150
     m = 50
     k_conf = 6
+    DOWNSAMPLE_RATE = 5
     
     sequence = [0, 1, 0, 2, 3, 2, 1, 3, 0, 2, 3]
     
@@ -69,18 +70,26 @@ def run_experiment():
     else:
         print("Skipping PCA. Streaming 3D signal directly...")
 
-    # Initialize Models (Increased reg_lambda to 10.0 for raw 3D sensor noise)
+    # --- ADD THIS BLOCK ---
+    print(f"Downsampling stream by factor of {DOWNSAMPLE_RATE}...")
+    stream_processed = stream_processed[::DOWNSAMPLE_RATE]
+    
+    # Adjust ground truth change points to match the new shortened timeline
+    true_cps = [int(cp / DOWNSAMPLE_RATE) for cp in true_cps]
+
+
+    # Initialize Models 
     mmd_model = OWR_CPD(
         n=n, m=m, eta=0.06, nu=0.96, k_conf=k_conf
     )
     pearson_model = Pearson_OWR_CPD(
-        n=n, m=m, tau=0.85, nu=0.71, k_conf=k_conf, reg_lambda=5.0, factor=2.5
+        n=n, m=m, tau=0.40, nu=0.71, k_conf=k_conf, reg_lambda=1e-2, factor=1.0
     )
     hybrid_model = Hybrid_OWR_CPD(
-        n=n, m=m, tau=0.85, nu=0.96, k_conf=k_conf, reg_lambda=5.0, factor=2.5
+        n=n, m=m, tau=0.50, nu=0.96, k_conf=k_conf, reg_lambda=1e-2, factor=1.0
     )
     mahalanobis_model = Mahalanobis_OWR_CPD(
-        n=n, m=m, tau=0.85, nu=0.025, k_conf=k_conf, reg_lambda=5.0, factor=2.5
+        n=n, m=m, tau=0.50, nu=0.025, k_conf=k_conf, reg_lambda=1e-2, factor=1.0
     )
 
     total_steps = len(stream_processed)

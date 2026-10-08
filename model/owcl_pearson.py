@@ -92,6 +92,7 @@ class Pearson_OWR_CPD:
             median_sq_dist = 1e-5 # Prevent division by zero
             
         self.gamma = self.factor * (1.0 / (2.0 * median_sq_dist))
+        print(f"  [Debug] Gamma Heuristic: gamma={self.gamma:.6f}")
         
         # Compute K_XX using the newly tuned gamma
         K_XX = np.exp(-self.gamma * dist_sq)
@@ -100,7 +101,7 @@ class Pearson_OWR_CPD:
         W = np.linalg.inv(K_XX + self.reg_lambda * np.eye(len(X_arr)))
 
         # Diagnostic prints
-        print(f"  [Debug] K_XX Condition Number: {np.linalg.cond(K_XX):.2e}")
+        print(f"  [Debug] K_XX Condition Number: {np.linalg.cond(K_XX + self.reg_lambda * np.eye(len(K_XX))):.2e}")
         print(f"  [Debug] Distance Variance: {np.var(pairwise_sq_dists):.4f}")
         print(f"  [Debug] K_XX Mean Off-Diagonal: {np.mean(K_XX[np.triu_indices_from(K_XX, k=1)]):.4f}")
         
