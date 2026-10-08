@@ -1,7 +1,7 @@
 import numpy as np
 
 class OWR_CPD:
-    def __init__(self, n, m, eta, nu, k_conf, gamma=0.1):
+    def __init__(self, n, m, eta, nu, k_conf, gamma=0.1, factor=1.0):
         """
         Open-World Change-Point Detection with Recurrent Regime Recall.
         Based on MMD detection and RKHS coherence for regime assignment.
@@ -13,6 +13,7 @@ class OWR_CPD:
         self.nu = nu            # Novelty threshold (Coherence)
         self.k_conf = k_conf    # Consecutive windows required to confirm change
         self.gamma = gamma      # Will be dynamically overwritten by the median heuristic
+        self.factor = factor    # Scaling factor for gamma adjustment (if needed)
         
         # System State
         self.t = 0
@@ -65,7 +66,7 @@ class OWR_CPD:
         if median_sq_dist == 0:
             median_sq_dist = 1e-5 # Prevent division by zero
             
-        self.gamma = 1.0 / (2.0 * median_sq_dist)
+        self.gamma = self.factor * (1.0 / (2.0 * median_sq_dist))
         return self.gamma
 
     def _compute_mmd_squared(self, X, Y):
