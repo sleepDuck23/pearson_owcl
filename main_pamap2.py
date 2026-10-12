@@ -8,9 +8,22 @@ from data.manage_pamap2 import load_pamap2_blocks, load_pamap2_full_blocks
 
 # Import your models
 from model.owcl_mmd import OWR_CPD
-from model.owcl_pearson import Pearson_OWR_CPD
-from model.owcl_p_coh import Hybrid_OWR_CPD
-from model.owcl_mah import Mahalanobis_OWR_CPD
+from model.owcl_pearson import PearsonOWRCPD       # Refactored class
+from model.owcl_p_coh import HybridOWRCPD          # Refactored class
+from model.owcl_mah import MahalanobisOWRCPD       # Refactored class
+
+def calculate_delays(true_cps: list, detected_cps: list) -> list:
+    """
+    Calculates the delay for each detected change point.
+    Matches each detection to the most recent true change point that occurred before it.
+    """
+    delays = []
+    for d_cp in detected_cps:
+        valid_true_cps = [t_cp for t_cp in true_cps if t_cp <= d_cp]
+        if valid_true_cps:
+            closest_true = max(valid_true_cps)
+            delays.append(d_cp - closest_true)
+    return delays
 
 def build_stream(sequence, activities, block_size):
     """Concatenates the activity blocks according to the chosen sequence."""
@@ -37,6 +50,7 @@ def run_experiment():
     n = 200
     m = 100
     k_conf = 6
+    dynamic_gamma = True
     
     sequence = [0, 1, 0, 2, 3, 2, 1, 3, 0, 2, 3]
     
@@ -58,11 +72,51 @@ def run_experiment():
     else:
         print("Skipping PCA. Streaming 3D signal directly...")
 
-    # Initialize Models
-    mmd_model = OWR_CPD(n=n, m=m, eta=0.75, nu=0.95, k_conf=k_conf, factor=1.0)
-    pearson_model = Pearson_OWR_CPD(n=n, m=m, tau=0.80, nu=0.71, k_conf=k_conf, reg_lambda=20.0, factor=1.0)
-    hybrid_model = Hybrid_OWR_CPD(n=n, m=m, tau=0.80, nu=0.96, k_conf=k_conf, reg_lambda=5.0, factor=1.0)
-    mahalanobis_model = Mahalanobis_OWR_CPD(n=n, m=m, tau=0.80, nu=0.05, k_conf=k_conf, reg_lambda=10.0, factor=1.0)
+    # Initialize Models using Refactored Names
+    mmd_model = OWR_CPD(
+        n=n, 
+        m=m, 
+        eta=0.75, 
+        nu=0.95, 
+        k_conf=k_conf, 
+        factor=1.0
+    )
+    
+    pearson_model = PearsonOWRCPD(
+        n=n, 
+        m=m, 
+        tau=0.80, 
+        nu=0.71, 
+        k_conf=k_conf, 
+        reg_lambda=20.0, 
+        factor=1.0,
+        dynamic_gamma=dynamic_gamma,
+        normalize_distance=False
+    )
+    
+    hybrid_model = HybridOWRCPD(
+        n=n, 
+        m=m, 
+        tau=0.80, 
+        nu=0.96, 
+        k_conf=k_conf, 
+        reg_lambda=5.0, 
+        factor=1.0,
+        dynamic_gamma=dynamic_gamma,
+        normalize_distance=False
+    )
+    
+    mahalanobis_model = MahalanobisOWRCPD(
+        n=n, 
+        m=m, 
+        tau=0.80, 
+        nu=0.05, 
+        k_conf=k_conf, 
+        reg_lambda=10.0, 
+        factor=1.0,
+        dynamic_gamma=dynamic_gamma,
+        normalize_distance=False
+    )
 
     total_steps = len(stream_processed)
     print(f"Starting concurrent monitoring (Total steps: {total_steps})...")
@@ -137,8 +191,12 @@ def run_experiment():
         regime_log = getattr(model, 'regime_log', [])
         seq = get_regime_sequence(regime_log)
         
+        delays = calculate_delays(true_cps, cps)
+        
         print(f" {name}")
         print(f"  Detected Changes : {cps}")
+        print(f"  Detection Delays : {delays}")
+        print(f"  Mean Delay       : {np.mean(delays) if delays else 0.0:.2f} steps")
         print(f"  Total Regimes    : {len(set(seq))}")
         print(f"  Regime Sequence  : {' -> '.join(map(str, seq))}\n")
     print("="*50 + "\n")

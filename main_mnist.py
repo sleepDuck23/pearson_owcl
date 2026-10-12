@@ -5,11 +5,11 @@ from sklearn.decomposition import PCA
 
 # Import your models
 from model.owcl_mmd import OWR_CPD
-from model.owcl_pearson import Pearson_OWR_CPD
-from model.owcl_p_coh import Hybrid_OWR_CPD
-from model.owcl_mah import Mahalanobis_OWR_CPD
+from model.owcl_pearson import PearsonOWRCPD       
+from model.owcl_p_coh import HybridOWRCPD          
+from model.owcl_mah import MahalanobisOWRCPD       
 
-def get_regime_sequence(regime_log):
+def get_regime_sequence(regime_log: list) -> str:
     """Extracts the sequence of assigned regimes."""
     seq = []
     prev = None
@@ -19,6 +19,19 @@ def get_regime_sequence(regime_log):
                 seq.append(r)
         prev = r
     return " -> ".join(map(str, seq)) if seq else "None"
+
+def calculate_delays(true_cps: list, detected_cps: list) -> list:
+    """
+    Calculates the delay for each detected change point.
+    Matches each detection to the most recent true change point that occurred before it.
+    """
+    delays = []
+    for d_cp in detected_cps:
+        valid_true_cps = [t_cp for t_cp in true_cps if t_cp <= d_cp]
+        if valid_true_cps:
+            closest_true = max(valid_true_cps)
+            delays.append(d_cp - closest_true)
+    return delays
 
 def generate_mnist_stream(sequence, samples_per_digit=300):
     """
@@ -69,6 +82,9 @@ def main():
     n = 150
     m = 40
     k_conf = 6
+    gamma = 1.0            # RBF kernel bandwidth
+    dynamic_gamma = True   # Use dynamic gamma adjustment
+    normalize_distance = True  
     
     # Generate the raw stream
     raw_data, actual_cps = generate_mnist_stream(TARGET_SEQ, samples_per_digit=300)
@@ -86,25 +102,52 @@ def main():
     # ==========================================
     # INITIALIZE MODELS
     # ==========================================
-    # Note: The paper provides exact thresholds for the MMD model.
-    # You will need to tune tau and nu for the Pearson-based models.
     mmd_model = OWR_CPD(
-        n=n, m=m, 
+        n=n, 
+        m=m, 
         eta=0.06,   # Paper calibrated detection threshold
         nu=0.96,    # Paper calibrated novelty threshold
-        k_conf=k_conf
+        k_conf=k_conf,
+        gamma=gamma
     )
     
-    pearson_model = Pearson_OWR_CPD(
-        n=n, m=m, tau=0.725, nu=0.71, k_conf=k_conf, reg_lambda=1e-0
+    pearson_model = PearsonOWRCPD(
+        n=n, 
+        m=m, 
+        tau=0.46, 
+        nu=0.71, 
+        k_conf=k_conf, 
+        reg_lambda=10,
+        gamma=gamma,
+        factor=1.0,
+        dynamic_gamma=dynamic_gamma,
+        normalize_distance=normalize_distance
     )
 
-    hybrid_model = Hybrid_OWR_CPD(
-        n=n, m=m, tau=0.725, nu=0.96, k_conf=k_conf, reg_lambda=1e-0
+    hybrid_model = HybridOWRCPD(
+        n=n, 
+        m=m, 
+        tau=0.38, 
+        nu=0.96, 
+        k_conf=k_conf, 
+        reg_lambda=10,
+        gamma=gamma,
+        factor=0.75,  
+        dynamic_gamma=dynamic_gamma,
+        normalize_distance=normalize_distance
     )
 
-    mahalanobis_model = Mahalanobis_OWR_CPD(
-        n=n, m=m, tau=0.725, nu=0.025, k_conf=k_conf, reg_lambda=1e-0
+    mahalanobis_model = MahalanobisOWRCPD(
+        n=n, 
+        m=m, 
+        tau=0.30, 
+        nu=0.025, 
+        k_conf=k_conf, 
+        reg_lambda=10,
+        gamma=gamma,
+        factor=0.5,
+        dynamic_gamma=dynamic_gamma,
+        normalize_distance=normalize_distance
     )
 
     # ==========================================
@@ -136,8 +179,11 @@ def main():
     ]
 
     for name, model, scores, color in models:
+        delays = calculate_delays(actual_cps, model.global_changepoints)
         print(f"\n {name} OWR MODEL")
         print(f"  Detected Changes : {model.global_changepoints}")
+        print(f"  Detection Delays : {delays}")
+        print(f"  Mean Delay       : {np.mean(delays) if delays else 0.0:.2f} steps")
         print(f"  Total Regimes    : {len(model.regimes)}")
         print(f"  Regime Sequence  : {get_regime_sequence(model.regime_log)}")
     print("="*50)
