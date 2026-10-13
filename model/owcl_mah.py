@@ -7,7 +7,7 @@ class MahalanobisOWRCPD:
     
     - Detection: O(N^2) recursive Pearson Divergence (Uncentered Kernel Space).
     - Classification: True Kernel Mahalanobis Distance (Centered RKHS).
-    - Kernel: Optional Dynamic Median Heuristic bandwidth tuning per regime.
+    - Kernel: Dynamic Median Absolute Deviation (MAD) bandwidth tuning per regime.
     - Distance: Optional Hypersphere Normalization for scale invariance.
     """
     
@@ -36,7 +36,7 @@ class MahalanobisOWRCPD:
         # Kernel Parameters
         self.reg_lambda = reg_lambda 
         self.gamma = gamma          # Initial/Static gamma
-        self.factor = factor        # Scaling factor for the median heuristic
+        self.factor = factor        # Scaling factor for the MAD heuristic
         self.dynamic_gamma = dynamic_gamma
         self.normalize_distance = normalize_distance
         
@@ -69,20 +69,14 @@ class MahalanobisOWRCPD:
         X_sq = np.sum(X**2, axis=1, keepdims=True)
         Y_sq = np.sum(Y**2, axis=1, keepdims=True).T
         dist_sq = X_sq + Y_sq - 2.0 * (X @ Y.T)
-        
         return np.maximum(dist_sq, 0.0)
 
     def _sq_distances(self, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
         """Computes scale-invariant squared Euclidean distance by unit hypersphere projection."""
         X, Y = np.atleast_2d(X), np.atleast_2d(Y)
-        
-        # Internal Normalization (makes the model scale-invariant)
         X_norm = X / np.maximum(np.linalg.norm(X, axis=1, keepdims=True), 1e-12)
         Y_norm = Y / np.maximum(np.linalg.norm(Y, axis=1, keepdims=True), 1e-12)
-        
-        # Distance in Cosine space
         dist_sq = 2.0 - 2.0 * (X_norm @ Y_norm.T)
-        
         return np.maximum(dist_sq, 0.0)
 
     def _get_active_distances(self, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
@@ -99,27 +93,37 @@ class MahalanobisOWRCPD:
 
     def _compute_regime_tensors(self, X_data: List[np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
         """
-        1. Computes squared distances and applies the Median Heuristic to tune gamma (if enabled).
+        1. Applies the MAD Guardrail Heuristic to tune gamma robustly (if enabled).
         2. Computes uncentered tensors (for O(N^2) active tracking).
         3. Computes centered tensors (for proper Mahalanobis Classification).
         """
         X_arr = np.array(X_data)
         n_samples = len(X_arr)
         
-        # Calculate Squared Distances
-        dist_sq = self._get_active_distances(X_arr, X_arr)
-        
         if self.dynamic_gamma:
-            triu_indices = np.triu_indices_from(dist_sq, k=1)
-            pairwise_sq_dists = dist_sq[triu_indices]
+            # Flatten to 1D for MAD computation
+            X_flat = X_arr.flatten()
             
-            median_sq_dist = np.median(pairwise_sq_dists)
-            median_sq_dist = max(median_sq_dist, 1e-5)  # Prevent division by zero
+            # 1. Compute spread using MAD (robust to zero-centering and outliers)
+            median_val = np.median(X_flat)
+            mad = np.median(np.abs(X_flat - median_val))
+            
+            # 2. Prevent division by zero if window is completely flat
+            if mad < 1e-4:
+                mad = 1.0
                 
-            self.gamma = self.factor / (2.0 * median_sq_dist)
-            print(f"  [Debug] Gamma Heuristic: gamma={self.gamma:.6f} | Variance={np.var(pairwise_sq_dists):.4f}")
-        else:
-            print(f"  [Debug] Using Static Gamma: gamma={self.gamma:.6f}")
+            # 3. Convert MAD to standard deviation scale (1.4826 normal consistency factor)
+            sigma_scale = mad * 1.4826 
+            
+            # 4. Set Gamma (Bandwidth) based on physical spread
+            raw_gamma = self.factor / (2.0 * (sigma_scale ** 2))
+            
+            # 5. Safety Clip to prevent matrix singularity or explosion
+            self.gamma = np.clip(raw_gamma, 1e-3, 50.0)
+            # print(f"  [Debug] MAD Heuristic: gamma={self.gamma:.6f} | MAD={mad:.4f}")
+            
+        # Calculate Squared Distances (for the kernel matrix)
+        dist_sq = self._get_active_distances(X_arr, X_arr)
         
         # Compute K_XX using the active gamma
         K_XX = np.exp(-self.gamma * dist_sq)
@@ -128,7 +132,6 @@ class MahalanobisOWRCPD:
         W_uncentered = np.linalg.inv(K_XX + self.reg_lambda * np.eye(n_samples))
         
         # 2. Centered W_c (Used for proper Kernel Mahalanobis Distance)
-        # H is the centering matrix: H = I - (1/n) * 11^T
         H = np.eye(n_samples) - np.ones((n_samples, n_samples)) / n_samples 
         K_c = H @ K_XX @ H
         W_centered = np.linalg.inv(K_c + self.reg_lambda * np.eye(n_samples))
