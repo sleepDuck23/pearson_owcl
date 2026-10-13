@@ -1,27 +1,19 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Import the data generator and all four OWR models
-from data.generation import generate_regime_stream
+# Import all four OWR models 
 from model.owcl_mmd import OWR_CPD
 from model.owcl_pearson import PearsonOWRCPD       
 from model.owcl_p_coh import HybridOWRCPD          
 from model.owcl_mah import MahalanobisOWRCPD       
 
 def get_regime_sequence(regime_log: list) -> str:
-    """
-    Extracts the sequence of assigned regimes. 
-    Registers a new assignment every time the model exits a transition state (-1),
-    allowing it to correctly show sequential identical regimes (e.g., 0 -> 1 -> 1).
-    """
+    """Filters out -1 (warmup phases) and compresses consecutive identical regimes."""
     seq = []
-    prev = None
     for r in regime_log:
         if r != -1:
-            # If this is the first item, or if we just exited a transition phase
-            if prev == -1 or prev is None:
+            if not seq or seq[-1] != r:
                 seq.append(r)
-        prev = r
     return " -> ".join(map(str, seq)) if seq else "None"
 
 def calculate_delays(true_cps: list, detected_cps: list) -> list:
@@ -37,77 +29,120 @@ def calculate_delays(true_cps: list, detected_cps: list) -> list:
             delays.append(d_cp - closest_true)
     return delays
 
-def main():
-    # 1. Generate the stream data (Regimes: A -> B -> C -> A)
-    total_length = 6000
-    true_cps = [1000, 2000, 3000, 4000, 5000]  # True change points
-    n = 150        # Reference window size
-    m = 50         # Test window size
-    gamma = 1.0    # RBF kernel bandwidth
-    k_conf = 6     # Consecutive windows to confirm change
-    dynamic_gamma = True  # Use dynamic gamma adjustment
+def generate_moment_matched_stream(tier="T1", segment_length=700, seed=42):
+    """
+    Generates the stream for Experiment 5.2: Robustness under matched moments.
+    Four regimes: (1) Gaussian, (2) Laplace, (3) Exponential, (4) Uniform.
+    """
+    np.random.seed(seed)
     
-    print("Generating Open-World stream data...\n")
-    data, actual_cps = generate_regime_stream(
-        length=total_length, 
-        changepoints=true_cps, 
-        means=[0.0, 5.0, -4.0,  5.0, 0.0, 10.0],  
-        stds=[1.0, 1.0, 0.5, 1.0, 1.0, 2.0],
-        seed=42
-    )
+    # Prescribed sequence of 12 segments
+    sequence_ids = [1, 2, 3, 4, 2, 1, 4, 3, 1, 4, 2, 3] 
+    
+    # Tier parameters
+    if tier == "T1": # Distinct means, common variance
+        means = {1: 0.0, 2: 3.0, 3: -3.0, 4: 6.0}
+        stds = {1: 1.0, 2: 1.0, 3: 1.0, 4: 1.0}
+    elif tier == "T2": # Common mean, distinct variances
+        means = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0}
+        stds = {1: 1.0, 2: 2.0, 3: 0.5, 4: 3.0}
+    elif tier == "T3": # Common mean, common variance
+        means = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0}
+        stds = {1: 1.0, 2: 1.0, 3: 1.0, 4: 1.0}
+    else:
+        raise ValueError("Tier must be 'T1', 'T2', or 'T3'")
+        
+    stream = []
+    actual_cps = []
+    current_len = 0
+    
+    for idx, dist_id in enumerate(sequence_ids):
+        target_mean = means[dist_id]
+        target_std = stds[dist_id]
+        
+        if dist_id == 1: # Gaussian
+            data = np.random.normal(target_mean, target_std, segment_length)
+            
+        elif dist_id == 2: # Laplace
+            # Laplace variance is 2 * scale^2. So scale = std / sqrt(2)
+            scale = target_std / np.sqrt(2)
+            data = np.random.laplace(target_mean, scale, segment_length)
+            
+        elif dist_id == 3: # Exponential
+            # Exp variance is scale^2. Mean is scale. 
+            data = np.random.exponential(scale=target_std, size=segment_length)
+            data = data - target_std + target_mean # Shift to target mean
+            
+        elif dist_id == 4: # Uniform
+            # Uniform variance is (high-low)^2 / 12. Half-width = std * sqrt(3)
+            half_width = target_std * np.sqrt(3)
+            data = np.random.uniform(target_mean - half_width, target_mean + half_width, segment_length)
+            
+        stream.extend(data)
+        current_len += segment_length
+        if idx < len(sequence_ids) - 1:
+            actual_cps.append(current_len)
+            
+    return np.array(stream), actual_cps, sequence_ids
 
-    # 2. Initialize all four models using the refactored names
+def main():
+    # ==========================================
+    # EXPERIMENT SETUP (Choose T1, T2, or T3)
+    # ==========================================
+    TIER = "T2"  
+    
+    # Experiment parameters defined by the paper Table 1
+    configs = {
+        "T1": {"n": 150, "m": 40,  "mmd_nu": 0.63, "seg_len": 700},
+        "T2": {"n": 300, "m": 100, "mmd_nu": 0.99, "seg_len": 1000},
+        "T3": {"n": 600, "m": 200, "mmd_nu": 1.00, "seg_len": 2000},
+    }
+    
+    n = configs[TIER]["n"]
+    m = configs[TIER]["m"]
+    k_conf = 6 
+    
+    # We use dynamic gamma (median heuristic) as described in the paper
+    gamma = 0.015 
+    dynamic_gamma = True
+    
+    print(f"Generating Open-World stream for Tier {TIER}...")
+    data, actual_cps, true_seq = generate_moment_matched_stream(tier=TIER, segment_length=configs[TIER]["seg_len"])
+    total_length = len(data)
+    
+    # Initialize Models
     mmd_model = OWR_CPD(
-        n=n, 
-        m=m, 
-        eta=0.1, 
-        nu=0.90, 
-        k_conf=k_conf, 
-        gamma=gamma
+        n=n, m=m, eta=0.04, nu=configs[TIER]["mmd_nu"], 
+        k_conf=k_conf, gamma=gamma
     )
     
     pearson_model = PearsonOWRCPD(
-        n=n, 
-        m=m, 
-        tau=0.75,  
-        nu=0.50,  
-        k_conf=k_conf, 
-        reg_lambda=1e-2, 
-        gamma=gamma,
+        n=n, m=m, tau=0.60, nu=0.48, 
+        k_conf=k_conf, reg_lambda=1e-3, gamma=gamma,
+        factor=1.0,
         dynamic_gamma=dynamic_gamma,
-        normalize_distance=False  
+        normalize_distance=False
     )
 
     hybrid_model = HybridOWRCPD(
-        n=n, 
-        m=m, 
-        tau=0.75,  
-        nu=0.90,  
-        k_conf=k_conf, 
-        reg_lambda=1e-2, 
-        gamma=gamma,
+        n=n, m=m, tau=0.60, nu=0.90, 
+        k_conf=k_conf, reg_lambda=1.0, gamma=gamma,
+        factor=1.0,
         dynamic_gamma=dynamic_gamma,
-        normalize_distance=False  
+        normalize_distance=False
     )
 
     mahalanobis_model = MahalanobisOWRCPD(
-        n=n, 
-        m=m, 
-        tau=0.75,  
-        nu=0.08,  
-        k_conf=k_conf, 
-        reg_lambda=1e-2, 
-        gamma=gamma,
+        n=n, m=m, tau=0.60, nu=0.08, 
+        k_conf=k_conf, reg_lambda=0.1, gamma=gamma,
+        factor = 1.0,
         dynamic_gamma=dynamic_gamma,
-        normalize_distance=False  
+        normalize_distance=False
     )
 
-    # 3. Run the online simulation
-    print("Starting concurrent monitoring...")
-    mmd_scores = []
-    pearson_scores = []
-    hybrid_scores = []
-    mah_scores = []
+    # Run Simulation
+    print(f"Starting concurrent monitoring (Total steps: {total_length})...")
+    mmd_scores, pearson_scores, hybrid_scores, mah_scores = [], [], [], []
     
     for t in range(total_length):
         mmd_scores.append(mmd_model.update(data[t]))
@@ -115,108 +150,63 @@ def main():
         hybrid_scores.append(hybrid_model.update(data[t]))
         mah_scores.append(mahalanobis_model.update(data[t]))
 
-    # 4. Readable Summary Report
+    # Report
     print("\n" + "="*50)
-    print("  SIMULATION SUMMARY REPORT")
+    print(f"  SIMULATION SUMMARY REPORT: TIER {TIER}")
+    print("="*50)
+    print(f"\n GROUND TRUTH Sequence: {' -> '.join(map(str, true_seq))}")
+    print(f" True Change Points   : {actual_cps}")
+
+    models_summary = [
+        ("MMD OWR MODEL", mmd_model),
+        ("PEARSON OWR MODEL", pearson_model),
+        ("HYBRID OWR MODEL", hybrid_model),
+        ("MAHALANOBIS OWR MODEL", mahalanobis_model)
+    ]
+
+    for name, model in models_summary:
+        cps = getattr(model, 'global_changepoints', [])
+        regime_log = getattr(model, 'regime_log', [])
+        
+        delays = calculate_delays(actual_cps, cps)
+        seq_str = get_regime_sequence(regime_log)
+        total_regimes = len(set(r for r in regime_log if r != -1))
+        
+        print(f"\n {name}")
+        print(f"  Detected Changes : {cps}")
+        print(f"  Detection Delays : {delays}")
+        print(f"  Mean Delay       : {np.mean(delays) if delays else 0.0:.2f} steps")
+        print(f"  Total Regimes    : {total_regimes}")
+        print(f"  Regime Sequence  : {seq_str}")
     print("="*50)
 
-    print("\n GROUND TRUTH")
-    print(f"  Change Points      : {actual_cps}")
-    print(f"  Regime Sequence    : A -> B -> C -> B -> A -> D")
-
-    # Calculate Delays
-    mmd_delays = calculate_delays(actual_cps, mmd_model.global_changepoints)
-    pearson_delays = calculate_delays(actual_cps, pearson_model.global_changepoints)
-    hybrid_delays = calculate_delays(actual_cps, hybrid_model.global_changepoints)
-    mah_delays = calculate_delays(actual_cps, mahalanobis_model.global_changepoints)
-
-    print("\n MMD OWR MODEL")
-    print(f"  Detected Changes   : {mmd_model.global_changepoints}")
-    print(f"  Detection Delays   : {mmd_delays}")
-    print(f"  Mean Delay         : {np.mean(mmd_delays) if mmd_delays else 0.0:.2f} steps")
-    print(f"  Total Regimes      : {len(mmd_model.regimes)}")
-    print(f"  Regime Sequence    : {get_regime_sequence(mmd_model.regime_log)}")
-
-    print("\n PEARSON OWR MODEL")
-    print(f"  Detected Changes   : {pearson_model.global_changepoints}")
-    print(f"  Detection Delays   : {pearson_delays}")
-    print(f"  Mean Delay         : {np.mean(pearson_delays) if pearson_delays else 0.0:.2f} steps")
-    print(f"  Total Regimes      : {len(pearson_model.regimes)}")
-    print(f"  Regime Sequence    : {get_regime_sequence(pearson_model.regime_log)}")
-
-    print("\n HYBRID OWR MODEL (Pearson CPD + MMD Coherence)")
-    print(f"  Detected Changes   : {hybrid_model.global_changepoints}")
-    print(f"  Detection Delays   : {hybrid_delays}")
-    print(f"  Mean Delay         : {np.mean(hybrid_delays) if hybrid_delays else 0.0:.2f} steps")
-    print(f"  Total Regimes      : {len(hybrid_model.regimes)}")
-    print(f"  Regime Sequence    : {get_regime_sequence(hybrid_model.regime_log)}")
+    # Visualization
+    fig, axes = plt.subplots(5, 1, figsize=(12, 16), sharex=True)
     
-    print("\n MAHALANOBIS OWR MODEL (Pearson CPD + Mahalanobis Dist)")
-    print(f"  Detected Changes   : {mahalanobis_model.global_changepoints}")
-    print(f"  Detection Delays   : {mah_delays}")
-    print(f"  Mean Delay         : {np.mean(mah_delays) if mah_delays else 0.0:.2f} steps")
-    print(f"  Total Regimes      : {len(mahalanobis_model.regimes)}")
-    print(f"  Regime Sequence    : {get_regime_sequence(mahalanobis_model.regime_log)}")
-    print("\n" + "="*50)
+    axes[0].plot(data, color="black", linewidth=0.5, alpha=0.8, label=f"Tier {TIER} Stream")
+    for cp in actual_cps:
+        axes[0].axvline(x=cp, color="blue", linestyle="--", linewidth=1.5)
+    axes[0].set_title(f"Open-World Stream: Robustness under Matched Moments ({TIER})")
+    axes[0].legend(loc="upper right")
 
-    # 5. Visualization and Comparison (5 subplots)
-    fig, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(5, 1, figsize=(12, 16), sharex=True)
+    model_data = [
+        (mmd_scores, mmd_model, "MMD", "teal"),
+        (pearson_scores, pearson_model, "Pearson", "purple"),
+        (hybrid_scores, hybrid_model, "Hybrid", "crimson"),
+        (mah_scores, mahalanobis_model, "Mahalanobis", "darkmagenta")
+    ]
 
-    # --- Panel 1: Input Signal ---
-    ax1.plot(data, color="black", linewidth=0.8, alpha=0.7, label="Stream Data")
-    for i, cp in enumerate(actual_cps):
-        label = "True Change" if i == 0 else ""
-        ax1.axvline(x=cp, color="blue", linestyle="--", linewidth=2, label=label)
-    
-    ax1.set_title("Open-World Stream (Mean & Variance Shifts)")
-    ax1.set_ylabel("Amplitude")
-    ax1.legend(loc="upper right")
-    ax1.grid(True, alpha=0.3)
-
-    # --- Panel 2: MMD Model Score ---
-    ax2.plot(mmd_scores, color="teal", linewidth=1.5, label="MMD Score")
-    ax2.axhline(y=mmd_model.eta, color="orange", linestyle="--", linewidth=2, label=rf"Threshold $\eta$ = {mmd_model.eta}")
-    for i, cp in enumerate(mmd_model.global_changepoints):
-        label = "MMD Detection" if i == 0 else ""
-        ax2.axvline(x=cp, color="red", linestyle="-", linewidth=2, label=label)
-    ax2.set_title("OWR-CPD (MMD) Model")
-    ax2.set_ylabel("MMD Score")
-    ax2.legend(loc="upper left")
-    ax2.grid(True, alpha=0.3)
-
-    # --- Panel 3: Pearson Model Score ---
-    ax3.plot(pearson_scores, color="purple", linewidth=1.5, label="Pearson Divergence")
-    ax3.axhline(y=pearson_model.tau, color="green", linestyle="--", linewidth=2, label=rf"Threshold $\tau$ = {pearson_model.tau}")
-    for i, cp in enumerate(pearson_model.global_changepoints):
-        label = "Pearson Detection" if i == 0 else ""
-        ax3.axvline(x=cp, color="red", linestyle="-", linewidth=2, label=label)
-    ax3.set_title("Pearson OWR-CPD Model")
-    ax3.set_ylabel("Pearson Score")
-    ax3.legend(loc="upper left")
-    ax3.grid(True, alpha=0.3)
-
-    # --- Panel 4: Hybrid Model Score ---
-    ax4.plot(hybrid_scores, color="crimson", linewidth=1.5, label="Hybrid Score (Pearson CPD)")
-    ax4.axhline(y=hybrid_model.tau, color="darkorange", linestyle="--", linewidth=2, label=rf"Threshold $\tau$ = {hybrid_model.tau}")
-    for i, cp in enumerate(hybrid_model.global_changepoints):
-        label = "Hybrid Detection" if i == 0 else ""
-        ax4.axvline(x=cp, color="red", linestyle="-", linewidth=2, label=label)
-    ax4.set_title("Hybrid OWR-CPD Model")
-    ax4.set_ylabel("Hybrid Score")
-    ax4.legend(loc="upper left")
-    ax4.grid(True, alpha=0.3)
-
-    # --- Panel 5: Mahalanobis Model Score ---
-    ax5.plot(mah_scores, color="darkmagenta", linewidth=1.5, label="Mahalanobis Score (Pearson CPD)")
-    ax5.axhline(y=mahalanobis_model.tau, color="goldenrod", linestyle="--", linewidth=2, label=rf"Threshold $\tau$ = {mahalanobis_model.tau}")
-    for i, cp in enumerate(mahalanobis_model.global_changepoints):
-        label = "Mahalanobis Detection" if i == 0 else ""
-        ax5.axvline(x=cp, color="red", linestyle="-", linewidth=2, label=label)
-    ax5.set_title("Mahalanobis OWR-CPD Model")
-    ax5.set_xlabel("Time Step (t)")
-    ax5.set_ylabel("Detection Score")
-    ax5.legend(loc="upper left")
-    ax5.grid(True, alpha=0.3)
+    for ax, (scores, model, name, color) in zip(axes[1:], model_data):
+        ax.plot(scores, color=color, linewidth=1.2, label=f"{name} Score")
+        
+        # Plot detection threshold line (eta for MMD, tau for Pearson-based)
+        thresh = getattr(model, 'eta', getattr(model, 'tau', 0.1))
+        ax.axhline(y=thresh, color="orange", linestyle="--", label="Detection Threshold")
+        
+        for cp in model.global_changepoints:
+            ax.axvline(x=cp, color="red", linestyle="-", linewidth=1.5)
+        ax.set_title(f"{name} OWR-CPD Model")
+        ax.legend(loc="upper left")
 
     plt.tight_layout()
     plt.show()

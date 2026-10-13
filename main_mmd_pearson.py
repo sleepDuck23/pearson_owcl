@@ -71,7 +71,7 @@ def main():
         tau=0.60,  
         nu=0.50,  
         k_conf=k_conf, 
-        reg_lambda=1e-3, 
+        reg_lambda=1e-5, 
         gamma=gamma,
         dynamic_gamma=dynamic_gamma,
         normalize_distance=False
