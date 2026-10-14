@@ -103,7 +103,7 @@ def main():
     k_conf = 6 
     
     # We use dynamic gamma (median heuristic) as described in the paper
-    gamma = 0.015 
+    gamma = 0.01 
     dynamic_gamma = True
     
     print(f"Generating Open-World stream for Tier {TIER}...")
@@ -117,24 +117,24 @@ def main():
     )
     
     pearson_model = PearsonOWRCPD(
-        n=n, m=m, tau=0.60, nu=0.48, 
-        k_conf=k_conf, reg_lambda=1e-3, gamma=gamma,
+        n=n, m=m, tau=0.40, nu=0.48, 
+        k_conf=k_conf, reg_lambda=1e-1, gamma=gamma,
         factor=1.0,
         dynamic_gamma=dynamic_gamma,
         normalize_distance=False
     )
 
     hybrid_model = HybridOWRCPD(
-        n=n, m=m, tau=0.60, nu=0.90, 
-        k_conf=k_conf, reg_lambda=1.0, gamma=gamma,
+        n=n, m=m, tau=0.40, nu=0.90, 
+        k_conf=k_conf, reg_lambda=1e-1, gamma=gamma,
         factor=1.0,
         dynamic_gamma=dynamic_gamma,
         normalize_distance=False
     )
 
     mahalanobis_model = MahalanobisOWRCPD(
-        n=n, m=m, tau=0.60, nu=0.08, 
-        k_conf=k_conf, reg_lambda=0.1, gamma=gamma,
+        n=n, m=m, tau=0.1, nu=0.08, 
+        k_conf=k_conf, reg_lambda=1e-5, gamma=gamma,
         factor = 1.0,
         dynamic_gamma=dynamic_gamma,
         normalize_distance=False

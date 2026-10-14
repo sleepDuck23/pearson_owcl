@@ -5,8 +5,8 @@ class MahalanobisOWRCPD:
     """
     Open-World Change-Point Detection with PROPER Kernel Mahalanobis Classification.
     
-    - Detection: O(N^2) recursive Pearson Divergence (Uncentered Kernel Space).
-    - Classification: True Kernel Mahalanobis Distance (Centered RKHS).
+    - Detection: O(N^2) Recursive Pearson Divergence (Exact NeurIPS empirical operator).
+    - Classification: True Kernel Mahalanobis Distance (Proper Matrix-Centered RKHS).
     - Kernel: Dynamic Median Absolute Deviation (MAD) bandwidth tuning per regime.
     - Distance: Optional Hypersphere Normalization for scale invariance.
     """
@@ -53,6 +53,7 @@ class MahalanobisOWRCPD:
         # Active Monitoring Tensors
         self.active_W = np.array([])
         self.active_h = np.array([])
+        self.active_mu_K = np.array([])
         
         # Regimes Library: Stores Centered & Uncentered parameters and active gamma
         self.regimes: List[Dict[str, Any]] = []       
@@ -120,7 +121,6 @@ class MahalanobisOWRCPD:
             
             # 5. Safety Clip to prevent matrix singularity or explosion
             self.gamma = np.clip(raw_gamma, 1e-3, 50.0)
-            # print(f"  [Debug] MAD Heuristic: gamma={self.gamma:.6f} | MAD={mad:.4f}")
             
         # Calculate Squared Distances (for the kernel matrix)
         dist_sq = self._get_active_distances(X_arr, X_arr)
@@ -152,14 +152,15 @@ class MahalanobisOWRCPD:
         # 1. Compute uncentered cross-kernel mean vector using historical gamma
         h = np.mean(self._rbf_kernel(X_i, Z, gamma_override=gamma_i), axis=1)
         
-        # 2. Center the distance vector perfectly in the RKHS
-        h_tilde_raw = h - mu_K
-        h_tilde = h_tilde_raw - np.mean(h_tilde_raw) 
+        # 2. Exact RKHS Matrix Centering (Projects the difference into the centered space)
+        n_samples = len(X_i)
+        H = np.eye(n_samples) - np.ones((n_samples, n_samples)) / n_samples
+        h_tilde = H @ (h - mu_K)
         
         # 3. Compute True Mahalanobis Distance (Mahalanobis norm in centered RKHS)
-        dist_sq = (W_c @ h_tilde) @ h_tilde
+        dist_sq = float((W_c @ h_tilde) @ h_tilde)
         
-        return float(dist_sq)
+        return dist_sq
 
     def update(self, x: Any) -> float:
         """Main online streaming process."""
@@ -183,7 +184,8 @@ class MahalanobisOWRCPD:
                     'gamma': gamma_init
                 })
                 
-                self.active_W = W_u.copy() # Active monitoring requires uncentered W
+                self.active_W = W_u.copy() 
+                self.active_mu_K = mu_K.copy()
                 self.active_regime_id = 0
                 self.state = "WARMUP_Y"
                 
@@ -233,9 +235,13 @@ class MahalanobisOWRCPD:
             self.X.append(x_t_m)
             self.regime_log.append(self.active_regime_id)
             
-            # 4. Evaluate Divergence Score (Pearson)
-            overlap = (self.active_W @ self.active_h) @ self.active_h
-            score = abs(overlap - 1.0) 
+            # 4. Evaluate Divergence Score (Exact NeurIPS Pearson Chi^2)
+            # Recompute active_mu_K for the shifted reference window 
+            # (Strictly O(N^2) complexity, preserves absolute numerical stability)
+            self.active_mu_K = np.mean(self._rbf_kernel(self.X, self.X), axis=1)
+            
+            delta = self.active_h - self.active_mu_K
+            score = 0.5 * float((self.active_W @ delta) @ delta)
             
             self.consec = self.consec + 1 if score > self.tau else 0
                 
@@ -287,6 +293,7 @@ class MahalanobisOWRCPD:
                 # Restart Active Monitoring
                 self.X = list(self.X_prime)
                 self.active_W = W_u.copy()
+                self.active_mu_K = mu_K.copy()
                 self.Y.clear()
                 self.state = "WARMUP_Y"
                 

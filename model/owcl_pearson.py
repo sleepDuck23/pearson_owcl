@@ -4,8 +4,8 @@ class PearsonOWRCPD:
     def __init__(self, n, m, tau, nu, k_conf, reg_lambda=1e-3, gamma=0.1, factor=1.0, dynamic_gamma=True, normalize_distance=False):
         """
         Open-World Change-Point Detection with Recurrent Regime Recall.
-        - Detection: O(N^2) recursive Pearson Divergence.
-        - Classification: Static Pearson Divergence evaluated against historical baselines.
+        - Detection: O(N^2) recursive Pearson Divergence (Exact NeurIPS empirical operator).
+        - Classification: Static Pearson Divergence (Exact NeurIPS formulation).
         - Kernel: Optional Dynamic Median Heuristic bandwidth tuning per regime.
         - Distance: Optional Hypersphere Normalization for scale invariance.
         """
@@ -33,8 +33,9 @@ class PearsonOWRCPD:
         # Active Monitoring Tensors (Updated in O(N^2))
         self.active_W = np.array([])
         self.active_h = np.array([])
+        self.active_mu_K = np.array([])
         
-        # Regimes Library: List of dicts {'X': array, 'W': array, 'gamma': float}
+        # Regimes Library: List of dicts {'X': array, 'W': array, 'mu_K': array, 'gamma': float}
         self.regimes = []       
         self.active_regime_id = 0
         
@@ -87,7 +88,7 @@ class PearsonOWRCPD:
         """
         1. Computes squared distances using the toggled metric.
         2. Applies the Median Heuristic to tune gamma (if dynamic_gamma=True).
-        3. Computes exact inverse metric tensor W in O(N^3).
+        3. Computes exact inverse metric tensor W and reference mean mu_K.
         """
         X_arr = np.array(X_data)
         dist_sq = self._get_active_distances(X_arr, X_arr)
@@ -114,32 +115,36 @@ class PearsonOWRCPD:
         # Compute exact inverse metric tensor
         W = np.linalg.inv(K_XX + self.reg_lambda * np.eye(len(X_arr)))
 
+        # Compute the reference mean embedding vector
+        mu_K = np.mean(K_XX, axis=1)
+
         # Diagnostic prints
         print(f"  [Debug] K_XX Condition Number: {np.linalg.cond(K_XX + self.reg_lambda * np.eye(len(K_XX))):.2e}")
         if self.dynamic_gamma:
             print(f"  [Debug] Distance Variance: {np.var(pairwise_sq_dists):.4f}")
         print(f"  [Debug] K_XX Mean Off-Diagonal: {np.mean(K_XX[np.triu_indices_from(K_XX, k=1)]):.4f}")
         
-        return W, self.gamma
+        return W, mu_K, self.gamma
 
     def _compute_pearson_divergence(self, Z, regime_dict):
         """
-        Computes the absolute Pearson Divergence from the baseline of 1.0.
-        Crucially uses the historical regime's specific gamma to project 
-        the new data correctly into that regime's feature space.
+        Computes the exact NeurIPS Empirical Pearson Divergence score.
+        Evaluates the quadratic form of the difference vector projected 
+        through the uncentered metric tensor W.
         """
         X_i = regime_dict['X']
         W_i = regime_dict['W']
+        mu_K_i = regime_dict['mu_K']
         gamma_i = regime_dict['gamma']
         
         # Cross-kernel vector using historical gamma
         h_iZ = np.mean(self._rbf_kernel(X_i, Z, gamma_override=gamma_i), axis=1)
         
-        # Pearson overlap score
-        overlap = np.dot(W_i @ h_iZ, h_iZ)
+        # Compute the exact difference vector
+        delta = h_iZ - mu_K_i
         
-        # Convert to strict absolute divergence metric
-        return abs(overlap - 1.0)
+        # Exact NeurIPS structural divergence score
+        return 0.5 * float(np.dot(W_i @ delta, delta))
 
     def update(self, x):
         """Main online streaming process."""
@@ -153,10 +158,16 @@ class PearsonOWRCPD:
             self.regime_log.append(-1)
             
             if len(self.X) == self.n:
-                W_init, gamma_init = self._compute_full_W_and_update_gamma(self.X)
-                self.regimes.append({'X': list(self.X), 'W': W_init, 'gamma': gamma_init})
+                W_init, mu_K_init, gamma_init = self._compute_full_W_and_update_gamma(self.X)
+                self.regimes.append({
+                    'X': list(self.X), 
+                    'W': W_init, 
+                    'mu_K': mu_K_init, 
+                    'gamma': gamma_init
+                })
                 
                 self.active_W = W_init.copy()
+                self.active_mu_K = mu_K_init.copy()
                 self.active_regime_id = 0
                 self.state = "WARMUP_Y"
                 
@@ -210,9 +221,12 @@ class PearsonOWRCPD:
             self.X.append(x_t_m)
             self.regime_log.append(self.active_regime_id)
             
-            # 4. Evaluate Divergence Score
-            overlap = np.dot(self.active_W @ self.active_h, self.active_h)
-            score = abs(overlap - 1.0)  
+            # 4. Evaluate Exact NeurIPS Pearson Divergence
+            # Dynamically recalculate the sliding reference mean
+            self.active_mu_K = np.mean(self._rbf_kernel(self.X, self.X), axis=1)
+            
+            delta = self.active_h - self.active_mu_K
+            score = 0.5 * float(np.dot(self.active_W @ delta, delta))
             
             if score > self.tau:
                 self.consec += 1
@@ -249,20 +263,31 @@ class PearsonOWRCPD:
                     best_i = -1
                     min_div = float('inf')
                         
-                new_W, new_gamma = self._compute_full_W_and_update_gamma(self.X_prime) 
+                new_W, new_mu_K, new_gamma = self._compute_full_W_and_update_gamma(self.X_prime) 
                 
                 if min_div <= self.nu:
                     print(f"  -> RESULT: Assigned to KNOWN Regime {best_i} (Min Div = {min_div:.4f} <= {self.nu})\n")
                     self.active_regime_id = best_i
-                    self.regimes[best_i] = {'X': list(self.X_prime), 'W': new_W, 'gamma': new_gamma}
+                    self.regimes[best_i] = {
+                        'X': list(self.X_prime), 
+                        'W': new_W, 
+                        'mu_K': new_mu_K, 
+                        'gamma': new_gamma
+                    }
                 else:
                     new_id = len(self.regimes)
                     print(f"  -> RESULT: Initiating NOVEL Regime {new_id} (Min Div = {min_div:.4f} > {self.nu})\n")
                     self.active_regime_id = new_id
-                    self.regimes.append({'X': list(self.X_prime), 'W': new_W, 'gamma': new_gamma})
+                    self.regimes.append({
+                        'X': list(self.X_prime), 
+                        'W': new_W, 
+                        'mu_K': new_mu_K, 
+                        'gamma': new_gamma
+                    })
                 
                 self.X = list(self.X_prime)
                 self.active_W = new_W.copy()
+                self.active_mu_K = new_mu_K.copy()
                 self.Y = []
                 self.state = "WARMUP_Y"
                 

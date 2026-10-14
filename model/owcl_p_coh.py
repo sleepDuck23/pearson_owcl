@@ -4,8 +4,8 @@ from typing import List, Dict, Tuple, Optional, Any
 class HybridOWRCPD:
     """
     Hybrid Open-World Change-Point Detection.
-    - Detection: Pearson Divergence (O(N^2) Schur updates with metric tensor W)
-    - Classification: MMD Coherence (Normalized RKHS overlap to prevent spatial whitening)
+    - Detection: Pearson Divergence (Exact O(N^2) empirical operator norm)
+    - Classification: MMD Coherence (Normalized RKHS overlap)
     - Kernel: Optional Dynamic Median Heuristic bandwidth tuning per regime.
     - Distance: Optional Hypersphere Normalization for scale invariance.
     """
@@ -51,9 +51,9 @@ class HybridOWRCPD:
         # Active Monitoring Tensors
         self.active_W = np.array([])
         self.active_h = np.array([])
+        self.active_mu_K = np.array([])
         
         # Regimes Library: [{'X': array, 'gamma': float}]
-        # Note: Hybrid model doesn't store W in regimes because it uses MMD for classification
         self.regimes: List[Dict[str, Any]] = []       
         self.active_regime_id = 0
         
@@ -96,11 +96,11 @@ class HybridOWRCPD:
         active_gamma = gamma_override if gamma_override is not None else self.gamma
         return np.exp(-active_gamma * dist_sq)
 
-    def _compute_full_W_and_update_gamma(self, X_data: List[np.ndarray]) -> Tuple[np.ndarray, float]:
+    def _compute_full_W_and_update_gamma(self, X_data: List[np.ndarray]) -> Tuple[np.ndarray, np.ndarray, float]:
         """
         1. Computes squared distances.
         2. Applies the Median Heuristic to tune gamma (if enabled).
-        3. Computes exact inverse metric tensor W in O(N^3).
+        3. Computes exact inverse metric tensor W and reference mean vector mu_K.
         """
         X_arr = np.array(X_data)
         dist_sq = self._get_active_distances(X_arr, X_arr)
@@ -124,7 +124,10 @@ class HybridOWRCPD:
         # Compute exact inverse metric tensor for Pearson tracking
         W = np.linalg.inv(K_XX + self.reg_lambda * np.eye(len(X_arr)))
         
-        return W, self.gamma
+        # 3. Mean of the reference kernel (mu_X in RKHS)
+        mu_K = np.mean(K_XX, axis=1)
+        
+        return W, mu_K, self.gamma
 
     def _compute_rkhs_coherence(self, Z: List[np.ndarray], regime_dict: Dict[str, Any]) -> float:
         """
@@ -138,7 +141,7 @@ class HybridOWRCPD:
         K_BB = max(1e-12, np.mean(self._rbf_kernel(X_i, X_i, gamma_override=gamma_i)))
         K_AB = np.mean(self._rbf_kernel(Z, X_i, gamma_override=gamma_i))
         
-        return K_AB / (np.sqrt(K_AA) * np.sqrt(K_BB))
+        return float(K_AB / (np.sqrt(K_AA) * np.sqrt(K_BB)))
 
     def update(self, x: Any) -> float:
         self.t += 1
@@ -151,10 +154,11 @@ class HybridOWRCPD:
             self.regime_log.append(-1)
             
             if len(self.X) == self.n:
-                W_init, gamma_init = self._compute_full_W_and_update_gamma(self.X)
+                W_init, mu_K_init, gamma_init = self._compute_full_W_and_update_gamma(self.X)
                 self.regimes.append({'X': list(self.X), 'gamma': gamma_init})
                 
                 self.active_W = W_init.copy()
+                self.active_mu_K = mu_K_init.copy()
                 self.active_regime_id = 0
                 self.state = "WARMUP_Y"
                 
@@ -205,9 +209,10 @@ class HybridOWRCPD:
             self.X.append(x_t_m)
             self.regime_log.append(self.active_regime_id)
             
-            # 4. Evaluate Pearson Divergence Score
-            overlap = (self.active_W @ self.active_h) @ self.active_h
-            score = abs(overlap - 1.0)
+            # 4. Evaluate Pearson Divergence Score (Exact NeurIPS Evaluation)
+            self.active_mu_K = np.mean(self._rbf_kernel(self.X, self.X), axis=1)
+            delta = self.active_h - self.active_mu_K
+            score = 0.5 * float((self.active_W @ delta) @ delta)
             
             self.consec = self.consec + 1 if score > self.tau else 0
                 
@@ -236,7 +241,7 @@ class HybridOWRCPD:
                 max_coh = coherence_scores[best_i] if coherence_scores else -float('inf')
                         
                 # Compute new W and get the newly tuned gamma for the fresh window
-                new_W, new_gamma = self._compute_full_W_and_update_gamma(self.X_prime) 
+                new_W, new_mu_K, new_gamma = self._compute_full_W_and_update_gamma(self.X_prime) 
                 
                 # Classification Decision (Note: MMD Coherence uses '>=', not '<=')
                 if max_coh >= self.nu:
@@ -251,6 +256,7 @@ class HybridOWRCPD:
                 # Restart the Pearson sliding window
                 self.X = list(self.X_prime)
                 self.active_W = new_W.copy()
+                self.active_mu_K = new_mu_K.copy()
                 self.Y.clear()
                 self.state = "WARMUP_Y"
                 
