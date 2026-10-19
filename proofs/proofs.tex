@@ -1,0 +1,440 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[margin=2.6cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+
+\newcommand{\HH}{\mathcal H_k}
+\newcommand{\E}{\mathbb E}
+\newcommand{\Prob}{\mathbb P}
+\newcommand{\norm}[1]{\left\lVert #1\right\rVert}
+\newcommand{\inner}[2]{\left\langle #1,#2\right\rangle}
+\newcommand{\op}{\mathrm{op}}
+\newcommand{\HS}{\mathrm{HS}}
+
+\title{Pairwise Guarantees for Directed\\
+Regularized Pearson-Type Classification}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Setting and score}
+
+Let $\HH$ be a real, separable RKHS with measurable
+feature map $\phi(z)=k(\cdot,z)$. We work with
+positive-semidefinite, pointwise nonnegative kernels
+satisfying
+\begin{equation}\label{eq:kernel}
+    k(x,y)\ge0,
+    \qquad
+    \sup_z k(z,z)\le K<\infty,
+    \qquad K>0.
+\end{equation}
+Nonnegativity implies
+\begin{equation}\label{eq:feature-difference}
+    \norm{\phi(x)-\phi(y)}_{\HH}^2
+    =k(x,x)+k(y,y)-2k(x,y)\le2K,
+\end{equation}
+which determines the concentration constants below.
+
+Fix a reference distribution $P_i$ and an incoming
+distribution $Q$. Let
+\[
+    Z_{i,1},\ldots,Z_{i,n}
+    \overset{\mathrm{i.i.d.}}{\sim}P_i,
+    \qquad
+    Z'_1,\ldots,Z'_n
+    \overset{\mathrm{i.i.d.}}{\sim}Q,
+\]
+with the two collections independent. Write
+\[
+    X_i=(Z_{i,1},\ldots,Z_{i,n}),
+    \qquad
+    X'=(Z'_1,\ldots,Z'_n).
+\]
+
+Define
+\begin{align*}
+    \mu_P&=\E_{Z\sim P}\phi(Z),
+    &
+    T_P&=\E_{Z\sim P}[\phi(Z)\otimes\phi(Z)],\\
+    \widehat\mu_i&=\frac1n\sum_{r=1}^n\phi(Z_{i,r}),
+    &
+    \widehat\mu'&=\frac1n\sum_{r=1}^n\phi(Z'_r),\\
+    \widehat T_i&=\frac1n\sum_{r=1}^n
+        \phi(Z_{i,r})\otimes\phi(Z_{i,r}),
+    &
+    \widehat\Delta_i&=\widehat\mu'-\widehat\mu_i.
+\end{align*}
+Here $(u\otimes v)w=\inner{v}{w}_{\HH}u$,
+$T_P$ is the uncentered second-moment operator,
+and $\Delta_i=\mu_Q-\mu_{P_i}$.
+
+For fixed $\lambda>0$, consider
+\begin{align}
+    \chi^2_\lambda(Q;P_i)
+    &:=
+    \frac12\inner{\Delta_i}
+    {(T_{P_i}+\lambda I)^{-1}\Delta_i}_{\HH},
+    \label{eq:population}\\
+    \widehat\chi^2_{\lambda,i}
+    &:=
+    \frac12\inner{\widehat\Delta_i}
+    {(\widehat T_i+\lambda I)^{-1}
+    \widehat\Delta_i}_{\HH}.
+    \label{eq:empirical}
+\end{align}
+This is a directed regularized RKHS Pearson-type
+discrepancy, with the reference distribution after
+the semicolon. It need not equal the classical
+Pearson divergence.
+
+The kernel is fixed before sampling. A separate fixed
+kernel may be assigned to each reference, provided
+both windows in a comparison are evaluated using
+that reference's kernel. All guarantees below concern
+one fixed comparison and are over both sampled windows.
+
+\subsection{Concentration}
+
+For $\gamma\in(0,1)$, set
+\begin{equation}\label{eq:radii}
+    b_n(\gamma)
+    :=
+    \sqrt{\frac{2K}{n}}
+    \left(1+\sqrt{\log\frac1\gamma}\right),
+    \qquad
+    e_n(\gamma)
+    :=
+    \frac K{\sqrt n}
+    \left(1+\sqrt{\log\frac1\gamma}\right).
+\end{equation}
+
+\begin{lemma}\label{lem:concentration}
+For every $\gamma\in(0,1)$,
+\begin{align}
+    \Prob\left\{
+        \norm{\widehat\Delta_i-\Delta_i}_{\HH}
+        \le b_n(\gamma)
+    \right\}
+    &\ge1-\gamma,
+    \label{eq:mean-concentration}\\
+    \Prob\left\{
+        \norm{\widehat T_i-T_{P_i}}_{\op}
+        \le e_n(\gamma)
+    \right\}
+    &\ge1-\gamma.
+    \label{eq:operator-concentration}
+\end{align}
+\end{lemma}
+
+\begin{proof}
+Independence and centering give
+\begin{align*}
+    \E\norm{\widehat\Delta_i-\Delta_i}_{\HH}^2
+    &=
+    \frac1n
+    \left(
+        \E_{Z\sim Q}k(Z,Z)-\norm{\mu_Q}_{\HH}^2
+    \right)\\
+    &\quad+
+    \frac1n
+    \left(
+        \E_{Z\sim P_i}k(Z,Z)
+        -\norm{\mu_{P_i}}_{\HH}^2
+    \right)\\
+    &\le\frac{2K}{n}.
+\end{align*}
+Thus the expected error norm is at most
+$\sqrt{2K/n}$.
+By \eqref{eq:feature-difference}, replacing one of
+the $2n$ observations changes that norm by at most
+$\sqrt{2K}/n$. McDiarmid's inequality therefore yields,
+for $t>0$,
+\[
+    \Prob\left\{
+        \norm{\widehat\Delta_i-\Delta_i}_{\HH}
+        -
+        \E\norm{\widehat\Delta_i-\Delta_i}_{\HH}
+        \ge t
+    \right\}
+    \le
+    \exp\left(-\frac{nt^2}{2K}\right).
+\]
+Taking $t=\sqrt{(2K/n)\log(1/\gamma)}$ proves
+\eqref{eq:mean-concentration}.
+
+For the operator, write $V(z)=\phi(z)\otimes\phi(z)$.
+Since $\norm{V(z)}_{\HS}=k(z,z)\le K$,
+\[
+    \E\norm{\widehat T_i-T_{P_i}}_{\HS}^2
+    =
+    \frac{
+        \E_{Z\sim P_i}\norm{V(Z)}_{\HS}^2
+        -
+        \norm{T_{P_i}}_{\HS}^2
+    }{n}
+    \le\frac{K^2}{n}.
+\]
+Moreover,
+\[
+    \norm{V(x)-V(y)}_{\HS}^2
+    =
+    k(x,x)^2+k(y,y)^2-2|k(x,y)|^2
+    \le2K^2.
+\]
+Consequently, the norm
+$G=\norm{\widehat T_i-T_{P_i}}_{\HS}$
+has expectation at most $K/\sqrt n$ and replacement
+sensitivity at most $\sqrt2K/n$ for each of its $n$
+observations. McDiarmid's inequality gives
+\[
+    \Prob\{G-\E G\ge t\}
+    \le
+    \exp\left(-\frac{nt^2}{K^2}\right).
+\]
+Taking $t=K\sqrt{\log(1/\gamma)/n}$ and using
+$\norm{\cdot}_{\op}\le\norm{\cdot}_{\HS}$
+proves \eqref{eq:operator-concentration}.
+\end{proof}
+
+\section{Upper bound under the null hypothesis}
+
+\begin{theorem}[Null upper bound]\label{thm:null}
+If $Q=P_i$, then for every $\rho_0\in(0,1)$,
+\[
+    \Prob\left\{
+        0\le\widehat\chi^2_{\lambda,i}
+        \le U_n(\rho_0)
+    \right\}
+    \ge1-\rho_0,
+\]
+where
+\begin{equation}\label{eq:U}
+    \boxed{
+    U_n(\rho_0)
+    :=
+    \frac{b_n(\rho_0)^2}{2\lambda}
+    =
+    \frac{K}{n\lambda}
+    \left(1+\sqrt{\log\frac1{\rho_0}}\right)^2.
+    }
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+Since $\widehat T_i\succeq0$,
+\[
+    0\le\widehat\chi^2_{\lambda,i}
+    \le\frac1{2\lambda}
+        \norm{\widehat\Delta_i}_{\HH}^2.
+\]
+Under the null, $\Delta_i=0$.
+Applying \eqref{eq:mean-concentration} at level
+$\rho_0$ proves the result.
+\end{proof}
+
+\section{Lower bound under a separated alternative}
+
+\subsection{Separation assumption}
+
+For a fixed pair, assume
+\begin{equation}\label{eq:separation}
+    \chi^2_\lambda(Q;P_i)\ge\delta>0.
+\end{equation}
+Alternatively, for a family $\mathcal P$ of admissible
+regimes, one may assume
+\[
+    \delta_{\min}
+    :=
+    \inf_{\substack{P,Q\in\mathcal P\\P\ne Q}}
+        \chi^2_\lambda(Q;P)>0
+\]
+and take $\delta=\delta_{\min}$.
+Each score uses its reference kernel when kernels
+are reference-specific. Any novel distribution
+covered by this uniform guarantee must belong
+to $\mathcal P$.
+
+\begin{theorem}[Alternative lower bound]
+\label{thm:alternative}
+Under \eqref{eq:separation}, for every
+$\rho_1\in(0,1)$,
+\[
+    \Prob\left\{
+        \widehat\chi^2_{\lambda,i}
+        \ge L_n(\delta,\rho_1)
+    \right\}
+    \ge1-\rho_1,
+\]
+where
+\begin{equation}\label{eq:L}
+    \boxed{
+    L_n(\delta,\rho_1)
+    :=
+    \frac{
+        \left[
+            \sqrt{2\delta}
+            -b_n(\rho_1/2)/\sqrt\lambda
+        \right]_+^2
+    }{
+        2\left(1+e_n(\rho_1/2)/\lambda\right)
+    }.
+    }
+\end{equation}
+Here $[x]_+=\max\{x,0\}$.
+\end{theorem}
+
+\begin{proof}
+Set $b=b_n(\rho_1/2)$ and $e=e_n(\rho_1/2)$.
+By Lemma~\ref{lem:concentration} and the union bound,
+with probability at least $1-\rho_1$,
+\[
+    \norm{\widehat\Delta_i-\Delta_i}_{\HH}\le b,
+    \qquad
+    \norm{\widehat T_i-T_{P_i}}_{\op}\le e.
+\]
+Work on this event and write
+\[
+    A=T_{P_i}+\lambda I,
+    \qquad
+    \widehat A=\widehat T_i+\lambda I,
+    \qquad
+    c=1+\frac e\lambda.
+\]
+Since $A\succeq\lambda I$,
+\[
+    \widehat A\preceq A+eI\preceq cA,
+    \qquad
+    \widehat A^{-1}\succeq c^{-1}A^{-1}.
+\]
+Using the norm
+$\norm{v}_{A^{-1}}^2=\inner{v}{A^{-1}v}_{\HH}$,
+the reverse triangle inequality gives
+\begin{align*}
+    \sqrt{2\widehat\chi^2_{\lambda,i}}
+    &\ge
+    \frac1{\sqrt c}\norm{\widehat\Delta_i}_{A^{-1}}\\
+    &\ge
+    \frac1{\sqrt c}
+    \left[
+        \norm{\Delta_i}_{A^{-1}}
+        -
+        \norm{\widehat\Delta_i-\Delta_i}_{A^{-1}}
+    \right]_+\\
+    &\ge
+    \frac1{\sqrt c}
+    \left[
+        \sqrt{2\delta}-\frac b{\sqrt\lambda}
+    \right]_+.
+\end{align*}
+The last inequality uses \eqref{eq:separation} and
+$A^{-1}\preceq\lambda^{-1}I$.
+Squaring and dividing by $2$ proves \eqref{eq:L}.
+\end{proof}
+
+\subsection{Threshold interval}
+
+Accept the reference if
+$\widehat\chi^2_{\lambda,i}\le\eta$
+and reject it otherwise.
+Theorems~\ref{thm:null}--\ref{thm:alternative}
+give the respective error bounds
+\[
+    \Prob_{H_0}
+    \{\widehat\chi^2_{\lambda,i}>\eta\}\le\rho_0,
+    \qquad
+    \Prob_{H_1}
+    \{\widehat\chi^2_{\lambda,i}\le\eta\}\le\rho_1,
+\]
+whenever
+\begin{equation}\label{eq:threshold-interval}
+    U_n(\rho_0)\le\eta<L_n(\delta,\rho_1).
+\end{equation}
+Here $H_0$ denotes $Q=P_i$, and $H_1$ denotes any
+fixed pair satisfying \eqref{eq:separation}.
+
+Writing
+\[
+    b_0=b_n(\rho_0),
+    \qquad
+    b_1=b_n(\rho_1/2),
+    \qquad
+    c=1+\frac{e_n(\rho_1/2)}{\lambda},
+\]
+the interval is nonempty if and only if
+\begin{equation}\label{eq:threshold-separation}
+    \boxed{
+    \delta>\frac{(b_1+\sqrt c\,b_0)^2}{2\lambda}.
+    }
+\end{equation}
+Indeed, since $b_0>0$, the inequality
+$L_n(\delta,\rho_1)>U_n(\rho_0)$ is equivalent to
+\[
+    \sqrt{2\delta}
+    >
+    \frac{b_1+\sqrt c\,b_0}{\sqrt\lambda}.
+\]
+
+\subsection{Threshold calibration and required separation}
+
+Choose a common error tolerance
+$\rho_0=\rho_1=\rho\in(0,1)$ and set
+$\eta=U_n(\rho)$. In terms of the initial parameters,
+\begin{equation}\label{eq:explicit-threshold}
+    \boxed{
+    \eta
+    =
+    \frac{K}{n\lambda}
+    \left(1+\sqrt{\log\frac1\rho}\right)^2.
+    }
+\end{equation}
+This guarantees a null rejection probability at most
+$\rho$, independently of the separation assumption.
+
+Substitution into \eqref{eq:threshold-separation}
+gives the separation required for a nonempty
+threshold interval:
+\begin{equation}\label{eq:explicit-separation}
+\boxed{
+\begin{aligned}
+    \delta>
+    \frac{K}{n\lambda}
+    \Bigg[
+        &1+\sqrt{\log\frac2\rho}\\
+        &+
+        \left(1+\sqrt{\log\frac1\rho}\right)
+        \sqrt{
+            1+\frac{K}{\lambda\sqrt n}
+            \left(1+\sqrt{\log\frac2\rho}\right)
+        }
+    \Bigg]^2.
+\end{aligned}
+}
+\end{equation}
+Under this condition, every fixed alternative pair
+with $\chi^2_\lambda(Q;P_i)\ge\delta$ satisfies
+\[
+    \Prob\left\{
+        \widehat\chi^2_{\lambda,i}\le\eta
+    \right\}\le\rho.
+\]
+
+Condition~\eqref{eq:explicit-separation} is equivalent
+to nonemptiness of the interval defined by our bounds.
+It is sufficient, but not necessary, for successful
+classification. These guarantees concern one fixed
+reference--incoming comparison; simultaneous control
+over the memory bank and repeated online decisions
+requires a separate analysis.
+
+\end{document}
