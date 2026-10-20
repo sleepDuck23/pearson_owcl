@@ -1,0 +1,539 @@
+\documentclass[11pt]{article}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+
+\newcommand{\HH}{\mathcal H}
+\newcommand{\E}{\mathbb E}
+\newcommand{\Prob}{\mathbb P}
+\newcommand{\inner}[2]{\langle #1,#2\rangle_{\HH}}
+\newcommand{\norm}[1]{\lVert #1\rVert_{\HH}}
+\newcommand{\pos}[1]{[#1]_+}
+
+\newtheorem{assumption}{Assumption}
+\newtheorem{lemma}{Lemma}
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}{Proposition}
+\newtheorem{remark}{Remark}
+
+\title{Energy-Normalized RKHS Pearson Classification:
+Threshold and Separation Guarantees}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Pearson score and energy normalization}
+
+Let $\HH$ be a real separable RKHS with measurable
+feature map $\phi$.
+For a reference distribution $P_i$, define
+\[
+    \mu_{P_i}=\E_{P_i}\phi(X),
+    \qquad
+    T_{P_i}=\E_{P_i}[\phi(X)\otimes\phi(X)],
+    \qquad
+    A_i=T_{P_i}+\lambda I,
+\]
+where $\lambda>0$.
+For an incoming distribution $Q$, set
+\[
+    \Delta_i=\mu_Q-\mu_{P_i}.
+\]
+
+The regularized RKHS Pearson-type score is
+\begin{equation}
+    D_i
+    =
+    \frac12\inner{\Delta_i}{A_i^{-1}\Delta_i}.
+    \label{eq:pearson}
+\end{equation}
+With
+\[
+    v_i=A_i^{-1/2}\mu_Q,
+    \qquad
+    w_i=A_i^{-1/2}\mu_{P_i},
+\]
+this becomes $D_i=\frac12\norm{v_i-w_i}^2$.
+Thus, $A_i^{-1}$ supplies the reference-dependent
+geometry.
+
+Define the total embedding energy and normalized score by
+\begin{align}
+    E_i
+    &:=
+    \inner{\mu_Q}{A_i^{-1}\mu_Q}
+    +
+    \inner{\mu_{P_i}}{A_i^{-1}\mu_{P_i}},
+    \label{eq:energy}\\
+    S_i
+    &:=
+    \frac{D_i}{E_i}
+    =
+    \frac{\norm{v_i-w_i}^2}
+    {2(\norm{v_i}^2+\norm{w_i}^2)}.
+    \label{eq:normalized-score}
+\end{align}
+When $E_i>0$, $0\le S_i\le1$.
+This normalization retains the Pearson geometry while
+measuring relative rather than absolute discrepancy.
+It defines a normalized score, not the classical
+Pearson divergence.
+
+\section{Sampling assumptions and empirical score}
+
+\begin{assumption}[Kernel and samples]
+\label{ass:sampling}
+The positive-semidefinite kernel is fixed before sampling
+and satisfies
+\[
+    k(x,y)\ge0,
+    \qquad
+    k(x,x)\le K
+\]
+for all $x,y$, with $K>0$.
+
+The reference and incoming samples satisfy
+\[
+    X_1,\ldots,X_n\overset{\mathrm{iid}}{\sim}P_i,
+    \qquad
+    Z_1,\ldots,Z_n\overset{\mathrm{iid}}{\sim}Q,
+\]
+and the two samples are independent.
+\end{assumption}
+
+Define
+\[
+    \widehat\mu_i=\frac1n\sum_{j=1}^n\phi(X_j),
+    \qquad
+    \widehat\mu_Q=\frac1n\sum_{j=1}^n\phi(Z_j),
+\]
+and
+\[
+    \widehat T_i
+    =\frac1n\sum_{j=1}^n\phi(X_j)\otimes\phi(X_j),
+    \qquad
+    \widehat A_i=\widehat T_i+\lambda I.
+\]
+The empirical quantities are
+\begin{align}
+    \widehat D_i
+    &:=
+    \frac12
+    \inner{\widehat\mu_Q-\widehat\mu_i}
+    {\widehat A_i^{-1}(\widehat\mu_Q-\widehat\mu_i)},
+    \\
+    \widehat E_i
+    &:=
+    \inner{\widehat\mu_Q}
+    {\widehat A_i^{-1}\widehat\mu_Q}
+    +
+    \inner{\widehat\mu_i}
+    {\widehat A_i^{-1}\widehat\mu_i},
+    \\
+    \widehat S_i&:=\frac{\widehat D_i}{\widehat E_i}.
+\end{align}
+If $\widehat E_i=0$, define $\widehat S_i=0$.
+In this case both empirical embeddings, and hence
+$\widehat D_i$, are zero.
+
+The incoming window is accepted as compatible with regime
+$i$ when $\widehat S_i\le\eta$.
+
+\begin{assumption}[Reference embedding energy]
+\label{ass:energy}
+A known constant $m_0>0$ satisfies
+\[
+    \norm{\mu_{P_i}}\ge m_0.
+\]
+\end{assumption}
+
+Assumption~\ref{ass:energy} prevents the normalization
+denominator from becoming arbitrarily small under the
+null. It concerns the reference distribution only.
+For a finite memory, it may be imposed uniformly over
+stored regimes or replaced by regime-specific constants.
+
+\section{Two useful energy bounds}
+
+Introduce the empirical midpoint embedding
+\[
+    \widehat c_i
+    =\frac{\widehat\mu_Q+\widehat\mu_i}{2}.
+\]
+The parallelogram identity in the
+$\widehat A_i^{-1}$ metric gives
+\begin{equation}
+    \widehat E_i
+    =
+    \widehat D_i+
+    2\inner{\widehat c_i}
+           {\widehat A_i^{-1}\widehat c_i}.
+    \label{eq:energy-decomposition}
+\end{equation}
+
+Since $\widehat T_i\preceq KI$,
+\begin{equation}
+    \inner{\widehat c_i}
+          {\widehat A_i^{-1}\widehat c_i}
+    \ge
+    \frac{\norm{\widehat c_i}^2}{K+\lambda}.
+    \label{eq:midpoint-energy}
+\end{equation}
+
+We also need an upper bound valid under any incoming
+distribution.
+
+\begin{lemma}[Uniform upper bound on total energy]
+\label{lem:energy-upper}
+Under Assumption~\ref{ass:sampling},
+\[
+    E_i\le M_\lambda,
+    \qquad
+    \widehat E_i\le M_\lambda,
+    \qquad
+    M_\lambda:=
+    \frac K\lambda+\frac K{K+\lambda}.
+\]
+\end{lemma}
+
+\begin{proof}
+The incoming term satisfies
+\[
+    \inner{\widehat\mu_Q}
+          {\widehat A_i^{-1}\widehat\mu_Q}
+    \le
+    \frac{\norm{\widehat\mu_Q}^2}{\lambda}
+    \le\frac K\lambda.
+\]
+The empirical covariance operator is positive semidefinite,
+so
+\[
+    \widehat T_i
+    \succeq\widehat\mu_i\otimes\widehat\mu_i.
+\]
+Inversion reverses the order, giving
+\[
+    \inner{\widehat\mu_i}
+          {\widehat A_i^{-1}\widehat\mu_i}
+    \le
+    \frac{\norm{\widehat\mu_i}^2}
+         {\lambda+\norm{\widehat\mu_i}^2}
+    \le\frac K{K+\lambda}.
+\]
+The population proof is identical, using
+$T_{P_i}\succeq\mu_{P_i}\otimes\mu_{P_i}$.
+\end{proof}
+
+\section{Null guarantee}
+
+For $\rho_0\in(0,1)$, define
+\begin{align}
+    U_0
+    &:=
+    \frac K{n\lambda}
+    \left(1+\sqrt{\log\frac2{\rho_0}}\right)^2,
+    \label{eq:U0}\\
+    a_0
+    &:=
+    \sqrt{\frac K{2n}}
+    \left(1+\sqrt{\log\frac2{\rho_0}}\right),
+    \label{eq:a0}\\
+    H_0
+    &:=
+    \frac{2\pos{m_0-a_0}^2}{K+\lambda},
+    \label{eq:H0}\\
+    \eta_0
+    &:=
+    \frac{U_0}{U_0+H_0}.
+    \label{eq:null-threshold}
+\end{align}
+
+\begin{theorem}[Acceptance under the null]
+\label{thm:null}
+Under Assumptions~\ref{ass:sampling}
+and~\ref{ass:energy}, if $Q=P_i$, then
+\[
+    \Prob\{\widehat S_i\le\eta_0\}\ge1-\rho_0.
+\]
+The threshold is strictly smaller than one whenever
+$m_0>a_0$.
+\end{theorem}
+
+\begin{proof}
+Under the null,
+\[
+    \E\norm{\widehat\mu_Q-\widehat\mu_i}^2
+    \le\frac{2K}{n}.
+\]
+Nonnegativity of the kernel implies
+\[
+    \norm{\phi(x)-\phi(y)}\le\sqrt{2K}.
+\]
+Applying one-sided McDiarmid concentration to the
+norm of the mean difference, and using
+$\widehat A_i^{-1}\preceq\lambda^{-1}I$, gives
+\[
+    \widehat D_i\le U_0
+\]
+with probability at least $1-\rho_0/2$.
+
+Under $Q=P_i$, the midpoint $\widehat c_i$ is the empirical
+mean of $2n$ iid observations from $P_i$.
+Its expected norm error is at most $\sqrt{K/(2n)}$.
+The same bounded-difference argument gives
+\[
+    \norm{\widehat c_i-\mu_{P_i}}\le a_0
+\]
+with probability at least $1-\rho_0/2$.
+
+On the intersection of these events,
+\[
+    \norm{\widehat c_i}\ge\pos{m_0-a_0}.
+\]
+Equations~\eqref{eq:energy-decomposition}
+and~\eqref{eq:midpoint-energy} therefore imply
+\[
+    \widehat E_i\ge\widehat D_i+H_0.
+\]
+When $H_0>0$,
+\[
+    \widehat S_i
+    \le
+    \frac{\widehat D_i}{\widehat D_i+H_0}
+    \le
+    \frac{U_0}{U_0+H_0}.
+\]
+If $H_0=0$, the claim follows from
+$\widehat S_i\le1=\eta_0$.
+A union bound completes the proof.
+\end{proof}
+
+\section{Alternative guarantee from Pearson separation}
+
+\begin{assumption}[Pearson separation]
+\label{ass:separation}
+For the fixed pair $(Q,P_i)$,
+\[
+    D_i\ge\delta>0.
+\]
+\end{assumption}
+
+For $\rho_1\in(0,1)$, define
+\begin{equation}
+    s_1=
+    \sqrt{\frac{K\log(2/\rho_1)}{n\lambda}},
+    \qquad
+    r_1=
+    \frac K\lambda
+    \sqrt{\frac{\log(2/\rho_1)}{2n}}.
+    \label{eq:alternative-radii}
+\end{equation}
+
+\begin{theorem}[Rejection of a separated regime]
+\label{thm:alternative}
+Under Assumptions~\ref{ass:sampling}
+and~\ref{ass:separation},
+\[
+    \Prob\left\{
+        \widehat S_i\ge
+        L_S(\delta,\rho_1)
+    \right\}\ge1-\rho_1,
+\]
+where
+\begin{equation}
+    L_S(\delta,\rho_1)
+    :=
+    \frac{\pos{\sqrt\delta-s_1}^2}
+         {M_\lambda(1+r_1)}.
+    \label{eq:normalized-lower}
+\end{equation}
+Consequently, if $\eta<L_S(\delta,\rho_1)$, then
+\[
+    \Prob\{\widehat S_i>\eta\}\ge1-\rho_1.
+\]
+This alternative guarantee does not require
+Assumption~\ref{ass:energy}.
+\end{theorem}
+
+\begin{proof}
+Define the fixed population direction
+\[
+    u_i=\frac{A_i^{-1}\Delta_i}{\sqrt{2D_i}}.
+\]
+It satisfies
+\[
+    \inner{u_i}{\Delta_i}=\sqrt{2D_i},
+    \qquad
+    \inner{u_i}{A_i u_i}=1,
+    \qquad
+    \norm{u_i}^2\le\lambda^{-1}.
+\]
+Set
+\[
+    \widehat d_i
+    =\inner{u_i}{\widehat\mu_Q-\widehat\mu_i},
+    \qquad
+    \widehat q_i
+    =\inner{u_i}{\widehat A_i u_i}.
+\]
+
+The variational representation of the empirical Pearson
+score, restricted to nonnegative multiples of $u_i$, gives
+\[
+    \widehat D_i
+    \ge
+    \sup_{t\ge0}
+    \left\{
+        t\widehat d_i-\frac{t^2}{2}\widehat q_i
+    \right\}
+    =
+    \frac{\pos{\widehat d_i}^2}{2\widehat q_i}.
+\]
+
+For the directional mean,
+\[
+    |u_i(x)-u_i(y)|
+    \le\sqrt{2K}\norm{u_i}.
+\]
+Hoeffding concentration for the $2n$ independent
+summands yields
+\[
+    \widehat d_i
+    \ge\sqrt{2D_i}-\sqrt2\,s_1
+\]
+with probability at least $1-\rho_1/2$.
+
+For the quadratic term,
+\[
+    0\le u_i(x)^2\le K\norm{u_i}^2,
+    \qquad
+    \E\widehat q_i=1.
+\]
+A second application of Hoeffding gives
+\[
+    \widehat q_i\le1+r_1
+\]
+with probability at least $1-\rho_1/2$.
+
+By a union bound, with probability at least $1-\rho_1$,
+\[
+    \widehat D_i
+    \ge
+    \frac{\pos{\sqrt{D_i}-s_1}^2}{1+r_1}
+    \ge
+    \frac{\pos{\sqrt\delta-s_1}^2}{1+r_1}.
+\]
+Lemma~\ref{lem:energy-upper} gives
+$\widehat E_i\le M_\lambda$, so dividing proves the claim.
+If $\widehat E_i=0$, then $\widehat D_i=0$;
+on the event above this is possible only when its stated
+lower bound is zero, in which case the result still holds.
+\end{proof}
+
+\section{Nonempty threshold interval}
+
+The null and alternative guarantees are compatible when
+\begin{equation}
+    \eta_0\le\eta<L_S(\delta,\rho_1).
+    \label{eq:interval}
+\end{equation}
+Since $\eta_0>0$, this certified interval is nonempty
+if and only if
+\begin{equation}
+    \boxed{
+    \delta>
+    \left[
+        s_1+
+        \sqrt{M_\lambda(1+r_1)\eta_0}
+    \right]^2.
+    }
+    \label{eq:nonempty}
+\end{equation}
+This equivalence concerns the displayed bounds, not a
+necessary condition for the classifier to succeed.
+
+Taking $\rho_0=\rho_1=\rho$, set
+\[
+    \ell=\log\frac2\rho,
+    \qquad
+    U=\frac K{n\lambda}(1+\sqrt\ell)^2,
+    \qquad
+    H=
+    \frac2{K+\lambda}
+    \left[
+        m_0-\sqrt{\frac K{2n}}(1+\sqrt\ell)
+    \right]_+^2.
+\]
+A valid threshold is
+\begin{equation}
+    \boxed{\eta=\frac{U}{U+H}.}
+\end{equation}
+The corresponding sufficient Pearson separation is
+\begin{equation}
+\boxed{
+\delta>
+\left[
+    \sqrt{\frac{K\ell}{n\lambda}}
+    +
+    \sqrt{
+        \left(\frac K\lambda+\frac K{K+\lambda}\right)
+        \left(1+\frac K\lambda\sqrt{\frac{\ell}{2n}}\right)
+        \frac{U}{U+H}
+    }
+\right]^2.
+}
+\label{eq:explicit-condition}
+\end{equation}
+
+A useful null threshold requires
+\[
+    m_0>
+    \sqrt{\frac K{2n}}
+    \left(1+\sqrt{\log\frac2\rho}\right).
+\]
+For fixed positive $m_0$, $K$, $\lambda$, and $\rho$,
+the threshold and the sufficient separation in
+\eqref{eq:explicit-condition} are both of order $n^{-1}$.
+
+\section{Interpretation and limitations}
+
+\paragraph{Additional requirement introduced by normalization.}
+Minimum Pearson separation controls the alternative
+numerator. It does not prevent the null denominator from
+being small. The reference embedding lower bound $m_0$
+addresses this separate issue.
+
+For independent $X,X'\sim P_i$,
+\[
+    \norm{\mu_{P_i}}^2=\E[k(X,X')].
+\]
+Thus, $m_0$ describes within-regime kernel similarity.
+The diagonal normalization $k(x,x)=1$ alone does not
+supply a useful distribution-uniform positive value
+of $m_0$.
+
+\paragraph{Conservatism of this study.}
+The alternative proof combines a directional Pearson
+lower bound with a uniform upper bound on total energy.
+It is a valid sufficient guarantee, but it does not
+establish that normalization improves the separation
+requirement relative to unnormalized Pearson.
+A sharper analysis would exploit the joint structure
+of the numerator and denominator.
+
+\paragraph{Pairwise versus complete classification.}
+The theorems concern one fixed reference comparison.
+For a memory of several regimes, correct assignment
+requires simultaneous acceptance of the correct regime
+and rejection of incorrect regimes.
+Appropriate error allocation is needed to combine these
+events. Repeated monitoring, data-dependent bandwidths,
+and windows selected after detection also require
+additional justification beyond the fixed-sample
+assumptions used here.
+
+\end{document}
