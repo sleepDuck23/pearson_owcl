@@ -22,89 +22,65 @@ def download_and_extract_pamap2(data_dir="data/PAMAP2_Dataset"):
     else:
         print("PAMAP2 Dataset already exists locally. Skipping download.")
 
-def load_pamap2_blocks(block_size=300):
-    """
-    Reads a PAMAP2 subject file, cleans NaNs, extracts the Hand 3D Accelerometer,
-    and maps 7 distinct activities to dictionary keys 0-6 to match the sequence builder.
-    """
+def _load_activity_blocks(feature_columns, block_size, blocks_per_activity):
+    """Collect non-overlapping blocks from contiguous runs of subject101."""
+    if not isinstance(block_size, (int, np.integer)) or block_size < 1:
+        raise ValueError("block_size must be a positive integer")
+    mapping = {1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 12: 5, 13: 6}
+    counts = (dict.fromkeys(mapping.values(), 1) if blocks_per_activity is None
+              else dict(blocks_per_activity))
+    for act, count in counts.items():
+        if act not in mapping.values() or not isinstance(count, (int, np.integer)) or count < 1:
+            raise ValueError("Activity IDs and block counts must be valid")
     download_and_extract_pamap2()
-    
-    # We will use subject101 as our continuous stream source
     file_path = "data/PAMAP2_Dataset/Protocol/subject101.dat"
-    
-    # PAMAP2 Columns: 1: timestamp, 2: activity_id, 3: heart_rate, 4-6: Hand Accel 3D
-    # We extract columns 1 (activity) and 4, 5, 6 (Hand X, Y, Z acceleration)
     print(f"Parsing {file_path}...")
-    df = pd.read_csv(file_path, sep='\s+', header=None, usecols=[1, 4, 5, 6])
-    df.columns = ['activity_id', 'x', 'y', 'z']
-    
-    # Drop transitional periods (activity 0) and any dropped packet NaNs
-    df = df[df['activity_id'] != 0].dropna()
-    
-    # Map PAMAP2 specific IDs to our 0-6 keys
-    # 1: lying, 2: sitting, 3: standing, 4: walking, 5: running, 12: asc_stairs, 13: desc_stairs
-    activity_mapping = {
-        1: 0,  
-        2: 1,  
-        3: 2,  
-        4: 3,  
-        5: 4,  
-        12: 5, 
-        13: 6  
-    }
-    
+    df = pd.read_csv(file_path, sep=r"\s+", header=None,
+                     usecols=[0, 1] + list(feature_columns))
+
+    # Preserve labels and timestamps until runs have been identified. Do not
+    # splice across activity transitions or missing timestamps (> 1.5 samples).
+    dt = df[0].diff()
+    new_run = df[1].ne(df[1].shift()) | dt.gt(0.015) | dt.le(0)
+    pools = {act: [] for act in counts}
+    for _, run in df.groupby(new_run.cumsum(), sort=False):
+        act = mapping.get(int(run[1].iloc[0]))
+        if act not in pools or len(pools[act]) >= counts[act]:
+            continue
+        # Causal sample-and-hold within this run only. Leading missing values
+        # are discarded, never filled using future observations or other labels.
+        features = run[list(feature_columns)].ffill().dropna()
+        values = features.to_numpy(dtype=float)
+        for start in range(0, len(values) - block_size + 1, block_size):
+            block = values[start:start + block_size]
+            if not np.isfinite(block).all():
+                raise ValueError(f"Non-finite sensor values in activity {act}")
+            pools[act].append(block)
+            if len(pools[act]) == counts[act]:
+                break
+
     activities = {}
-    for pamap_id, target_key in activity_mapping.items():
-        # Extract the continuous block for this specific activity
-        block = df[df['activity_id'] == pamap_id][['x', 'y', 'z']].values
-        
-        if len(block) >= block_size:
-            activities[target_key] = block[:block_size]
-        else:
-            # Fallback/padding if a subject didn't perform an activity long enough
-            print(f"Warning: Activity {pamap_id} too short. Padding with local mean.")
-            pad_length = block_size - len(block)
-            padding = np.tile(np.mean(block, axis=0), (pad_length, 1)) if len(block) > 0 else np.zeros((pad_length, 3))
-            activities[target_key] = np.vstack([block, padding])
-            
+    for act, chunks in pools.items():
+        if len(chunks) != counts[act]:
+            raise ValueError(
+                f"Activity {act} needs {counts[act]} distinct contiguous blocks "
+                f"of {block_size} samples; found {len(chunks)}. "
+                "Reduce the sequence/block size or use additional recordings.")
+        activities[act] = np.vstack(chunks)
     return activities, block_size
 
-def load_pamap2_full_blocks(block_size=1500):
+
+def load_pamap2_blocks(block_size=300, blocks_per_activity=None):
+    """Hand acceleration (zero-based columns 4, 5, 6); no replay or padding."""
+    return _load_activity_blocks([4, 5, 6], block_size, blocks_per_activity)
+
+
+def load_pamap2_full_blocks(block_size=1500, blocks_per_activity=None):
+    """Heart rate and valid IMU channels, with causal within-run filling.
+
+    Exclude the 12 orientation channels marked invalid by the dataset authors.
+    The resulting observations have 40 features, excluding timestamp and label.
     """
-    Reads all 54 columns of a PAMAP2 subject file, interpolates mismatched 
-    sampling rates, and extracts the full body sensor network.
-    """
-    download_and_extract_pamap2()
-    file_path = "data/PAMAP2_Dataset/Protocol/subject101.dat"
-    
-    print(f"Parsing all columns from {file_path}...")
-    # Load all 54 columns. Col 0 is timestamp, Col 1 is activity_id.
-    df = pd.read_csv(file_path, sep='\s+', header=None)
-    
-    # Rename activity column for easy filtering
-    df.rename(columns={1: 'activity_id'}, inplace=True)
-    
-    # Drop transitional periods (activity 0)
-    df = df[df['activity_id'] != 0]
-    
-    # THE CRITICAL STEP: Interpolate the 9Hz heart rate and dropped packets 
-    # to match the 100Hz IMU stream.
-    df.fillna(method='ffill', inplace=True) # Forward fill previous valid readings
-    df.fillna(method='bfill', inplace=True) # Backward fill any remaining gaps at the start
-    
-    activity_mapping = {1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 12: 5, 13: 6}
-    activities = {}
-    
-    for pamap_id, target_key in activity_mapping.items():
-        # Extract all 52 feature columns (skipping timestamp and activity_id)
-        block = df[df['activity_id'] == pamap_id].iloc[:, 2:].values
-        
-        if len(block) >= block_size:
-            activities[target_key] = block[:block_size]
-        else:
-            print(f"Warning: Activity {pamap_id} too short. Padding with local mean.")
-            pad_length = block_size - len(block)
-            padding = np.tile(np.mean(block, axis=0), (pad_length, 1)) if len(block) > 0 else np.zeros((pad_length, block.shape[1]))
-            activities[target_key] = np.vstack([block, padding])
-            
-    return activities, block_size
+    invalid_orientation = set(range(16, 20)) | set(range(33, 37)) | set(range(50, 54))
+    columns = [column for column in range(2, 54) if column not in invalid_orientation]
+    return _load_activity_blocks(columns, block_size, blocks_per_activity)

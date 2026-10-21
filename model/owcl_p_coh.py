@@ -1,11 +1,13 @@
 import numpy as np
+from .owcl_pearson import (validate_parameters, squared_distances, median_gamma,
+                    inverse_gram, slide_inverse, pearson_score)
 from typing import List, Dict, Tuple, Optional, Any
 
 class HybridOWRCPD:
     """
     Hybrid Open-World Change-Point Detection.
-    - Detection: Pearson Divergence (Exact O(N^2) empirical operator norm)
-    - Classification: MMD Coherence (Normalized RKHS overlap)
+    - Detection: Pearson Divergence (regularized RKHS Pearson-type discrepancy)
+    - Classification: MMD-style coherence (cosine of RKHS mean embeddings).
     - Kernel: Optional Dynamic Median Heuristic bandwidth tuning per regime.
     - Distance: Optional Hypersphere Normalization for scale invariance.
     """
@@ -23,6 +25,7 @@ class HybridOWRCPD:
         normalize_distance: bool = False
     ):
         # Window Parameters
+        validate_parameters(n, m, k_conf, gamma, factor, reg_lambda)
         self.n = n                  
         self.m = m                  
         
@@ -62,27 +65,11 @@ class HybridOWRCPD:
         self.hybrid_scores: List[float] = []
         self.regime_log: List[int] = []
 
-    def _sq_distances_v0(self, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
-        """Computes the squared Euclidean distance matrix."""
-        X, Y = np.atleast_2d(X), np.atleast_2d(Y)
-        X_sq = np.sum(X**2, axis=1, keepdims=True)
-        Y_sq = np.sum(Y**2, axis=1, keepdims=True).T
-        dist_sq = X_sq + Y_sq - 2.0 * (X @ Y.T)
-        
-        return np.maximum(dist_sq, 0.0)
+    def _sq_distances_v0(self, X, Y):
+        return squared_distances(X, Y, normalize=False)
 
-    def _sq_distances(self, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
-        """Computes scale-invariant squared Euclidean distance by unit hypersphere projection."""
-        X, Y = np.atleast_2d(X), np.atleast_2d(Y)
-        
-        # Internal Normalization (makes the model scale-invariant)
-        X_norm = X / np.maximum(np.linalg.norm(X, axis=1, keepdims=True), 1e-12)
-        Y_norm = Y / np.maximum(np.linalg.norm(Y, axis=1, keepdims=True), 1e-12)
-        
-        # Distance in Cosine space
-        dist_sq = 2.0 - 2.0 * (X_norm @ Y_norm.T)
-        
-        return np.maximum(dist_sq, 0.0)
+    def _sq_distances(self, X, Y):
+        return squared_distances(X, Y, normalize=True)
 
     def _get_active_distances(self, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
         """Routes to the appropriate distance metric based on the normalization toggle."""
@@ -106,23 +93,13 @@ class HybridOWRCPD:
         dist_sq = self._get_active_distances(X_arr, X_arr)
         
         if self.dynamic_gamma:
-            # Extract only the unique pairwise distances (upper triangle)
-            triu_indices = np.triu_indices_from(dist_sq, k=1)
-            pairwise_sq_dists = dist_sq[triu_indices]
-            
-            median_sq_dist = np.median(pairwise_sq_dists)
-            median_sq_dist = max(median_sq_dist, 1e-5) # Prevent division by zero
-                
-            self.gamma = self.factor / (2.0 * median_sq_dist)
-            print(f"  [Debug] Gamma Heuristic: gamma={self.gamma:.6f} | Variance={np.var(pairwise_sq_dists):.4f}")
-        else:
-            print(f"  [Debug] Using Static Gamma: gamma={self.gamma:.6f}")
-        
+            self.gamma = median_gamma(dist_sq, self.factor, self.gamma)
+
         # Compute K_XX using the active gamma
         K_XX = np.exp(-self.gamma * dist_sq)
         
         # Compute exact inverse metric tensor for Pearson tracking
-        W = np.linalg.inv(K_XX + self.reg_lambda * np.eye(len(X_arr)))
+        W = inverse_gram(K_XX, self.reg_lambda)
         
         # 3. Mean of the reference kernel (mu_X in RKHS)
         mu_K = np.mean(K_XX, axis=1)
@@ -131,7 +108,7 @@ class HybridOWRCPD:
 
     def _compute_rkhs_coherence(self, Z: List[np.ndarray], regime_dict: Dict[str, Any]) -> float:
         """
-        Computes Normalized MMD Coherence for Classification.
+        Compute <mu_Z,mu_X> / (||mu_Z|| ||mu_X||), as in owcl_mmd.
         Crucially uses the historical regime's specific gamma.
         """
         X_i = regime_dict['X']
@@ -141,7 +118,7 @@ class HybridOWRCPD:
         K_BB = max(1e-12, np.mean(self._rbf_kernel(X_i, X_i, gamma_override=gamma_i)))
         K_AB = np.mean(self._rbf_kernel(Z, X_i, gamma_override=gamma_i))
         
-        return float(K_AB / (np.sqrt(K_AA) * np.sqrt(K_BB)))
+        return float(np.clip(K_AB / (np.sqrt(K_AA) * np.sqrt(K_BB)), 0.0, 1.0))
 
     def update(self, x: Any) -> float:
         self.t += 1
@@ -171,27 +148,14 @@ class HybridOWRCPD:
                 self.active_h = np.mean(self._rbf_kernel(self.X, self.Y), axis=1)
                 self.state = "ACTIVE"
                 
-        # --- PHASE 3: Pearson Active Monitoring (O(N^2) Sliding Window) ---
+        # --- PHASE 3: Pearson Active Monitoring (Recursive Sliding Window) ---
         elif self.state == "ACTIVE":
             x_t, x_t_m = x, self.Y[0] 
             
-            # 1. Downdate W
-            w11, w12 = self.active_W[0, 0], self.active_W[0, 1:]
-            w21, W22 = self.active_W[1:, 0], self.active_W[1:, 1:]
-            W_reduced = W22 - np.outer(w21, w12) / w11
-            
-            # 2. Update W
-            X_reduced = self.X[1:]  
+            # W = (K_XX + n * lambda I)^-1, with fixed gamma.
+            self.active_W = slide_inverse(self, x_t_m)
+            X_reduced = self.X[1:]
             k_in = self._rbf_kernel(X_reduced, x_t_m).flatten()
-            
-            v = W_reduced @ k_in
-            schur_scalar = max(1e-12, (1.0 + self.reg_lambda) - (k_in @ v))
-            beta = 1.0 / schur_scalar
-            
-            self.active_W = np.block([
-                [W_reduced + beta * np.outer(v, v), -beta * v[:, None]],
-                [-beta * v[None, :],                np.array([[beta]])]
-            ])
 
             # 3. Update h vector recursively (Fixed Order)
             h_reduced = self.active_h[1:].copy() 
@@ -209,10 +173,11 @@ class HybridOWRCPD:
             self.X.append(x_t_m)
             self.regime_log.append(self.active_regime_id)
             
-            # 4. Evaluate Pearson Divergence Score (Exact NeurIPS Evaluation)
+            # 4. Evaluate Pearson Divergence Score (regularized RKHS operator)
             self.active_mu_K = np.mean(self._rbf_kernel(self.X, self.X), axis=1)
-            delta = self.active_h - self.active_mu_K
-            score = 0.5 * float((self.active_W @ delta) @ delta)
+            score = pearson_score(
+                self, self.Y, self.X, self.active_W, self.active_mu_K,
+                self.gamma, h=self.active_h)
             
             self.consec = self.consec + 1 if score > self.tau else 0
                 

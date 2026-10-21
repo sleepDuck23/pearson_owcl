@@ -1,4 +1,7 @@
 import numpy as np
+from main_mmd_pearson import (
+    detection_indices, get_regime_sequence, calculate_delays, print_detection_summary,
+)
 import matplotlib.pyplot as plt
 from sklearn.datasets import fetch_openml
 from sklearn.decomposition import PCA
@@ -9,29 +12,7 @@ from model.owcl_pearson import PearsonOWRCPD
 from model.owcl_p_coh import HybridOWRCPD          
 from model.owcl_mah import MahalanobisOWRCPD       
 
-def get_regime_sequence(regime_log: list) -> str:
-    """Extracts the sequence of assigned regimes."""
-    seq = []
-    prev = None
-    for r in regime_log:
-        if r != -1:
-            if prev == -1 or prev is None:
-                seq.append(r)
-        prev = r
-    return " -> ".join(map(str, seq)) if seq else "None"
 
-def calculate_delays(true_cps: list, detected_cps: list) -> list:
-    """
-    Calculates the delay for each detected change point.
-    Matches each detection to the most recent true change point that occurred before it.
-    """
-    delays = []
-    for d_cp in detected_cps:
-        valid_true_cps = [t_cp for t_cp in true_cps if t_cp <= d_cp]
-        if valid_true_cps:
-            closest_true = max(valid_true_cps)
-            delays.append(d_cp - closest_true)
-    return delays
 
 def generate_mnist_stream(sequence, samples_per_digit=300):
     """
@@ -44,24 +25,33 @@ def generate_mnist_stream(sequence, samples_per_digit=300):
     X = X / 255.0 
     y = y.astype(int)
     
+    if not sequence or samples_per_digit < 1:
+        raise ValueError("Provide a nonempty sequence and positive segment length")
+    rng = np.random.RandomState(42)
+    pools = {}
+    offsets = {}
+    for digit in sorted(set(sequence)):
+        indices = np.flatnonzero(y == digit)
+        needed = sequence.count(digit) * samples_per_digit
+        if len(indices) < needed:
+            raise ValueError(f"Digit {digit} needs {needed} distinct images; only {len(indices)} available")
+        pools[digit] = rng.permutation(indices)
+        offsets[digit] = 0
     stream = []
     actual_cps = []
     current_len = 0
     
     print(f"Building stream for sequence: {sequence}")
     for idx, digit in enumerate(sequence):
-        # Extract all images for the target digit
-        digit_images = X[y == digit]
-        
-        # Randomly sample the required number of images
-        np.random.seed(42 + idx) # Seed for reproducibility
-        selected_indices = np.random.choice(len(digit_images), samples_per_digit, replace=False)
-        segment = digit_images[selected_indices]
-        
+        start = offsets[digit]
+        selected_indices = pools[digit][start:start + samples_per_digit]
+        offsets[digit] += samples_per_digit
+        segment = X[selected_indices]
+
         stream.extend(segment)
         current_len += samples_per_digit
         
-        if idx < len(sequence) - 1:
+        if idx < len(sequence) - 1 and digit != sequence[idx + 1]:
             actual_cps.append(current_len)
             
     return np.array(stream), actual_cps
@@ -92,7 +82,9 @@ def main():
     if USE_PCA:
         print(f"Applying PCA to reduce dimensions to d={PCA_DIM}...")
         pca = PCA(n_components=PCA_DIM, random_state=42)
-        data = pca.fit_transform(raw_data)
+        # Fit on the initial reference window only, before monitoring starts.
+        pca.fit(raw_data[:n])
+        data = pca.transform(raw_data)
     else:
         print("Using raw 784-dimensional pixel space...")
         data = raw_data
@@ -108,7 +100,8 @@ def main():
         eta=0.06,   # Paper calibrated detection threshold
         nu=0.96,    # Paper calibrated novelty threshold
         k_conf=k_conf,
-        gamma=gamma
+        gamma=gamma,
+        dynamic_gamma=dynamic_gamma
     )
     
     pearson_model = PearsonOWRCPD(
@@ -179,13 +172,8 @@ def main():
     ]
 
     for name, model, scores, color in models:
-        delays = calculate_delays(actual_cps, model.global_changepoints)
         print(f"\n {name} OWR MODEL")
-        print(f"  Detected Changes : {model.global_changepoints}")
-        print(f"  Detection Delays : {delays}")
-        print(f"  Mean Delay       : {np.mean(delays) if delays else 0.0:.2f} steps")
-        print(f"  Total Regimes    : {len(model.regimes)}")
-        print(f"  Regime Sequence  : {get_regime_sequence(model.regime_log)}")
+        print_detection_summary(actual_cps, model)
     print("="*50)
 
     fig, axes = plt.subplots(4, 1, figsize=(12, 12), sharex=True)
@@ -198,7 +186,7 @@ def main():
         
         for cp in actual_cps:
             ax.axvline(x=cp, color="black", linestyle=":", alpha=0.5, linewidth=1.5)
-        for cp in model.global_changepoints:
+        for cp in detection_indices(model):
             ax.axvline(x=cp, color="red", linestyle="-", linewidth=1.5)
             
         ax.set_title(f"{name} OWR-CPD Model")

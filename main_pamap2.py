@@ -1,4 +1,7 @@
 import numpy as np
+from main_mmd_pearson import (
+    detection_indices, get_regime_sequence, calculate_delays, print_detection_summary,
+)
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
@@ -12,31 +15,28 @@ from model.owcl_pearson import PearsonOWRCPD       # Refactored class
 from model.owcl_p_coh import HybridOWRCPD          # Refactored class
 from model.owcl_mah import MahalanobisOWRCPD       # Refactored class
 
-def calculate_delays(true_cps: list, detected_cps: list) -> list:
-    """
-    Calculates the delay for each detected change point.
-    Matches each detection to the most recent true change point that occurred before it.
-    """
-    delays = []
-    for d_cp in detected_cps:
-        valid_true_cps = [t_cp for t_cp in true_cps if t_cp <= d_cp]
-        if valid_true_cps:
-            closest_true = max(valid_true_cps)
-            delays.append(d_cp - closest_true)
-    return delays
 
 def build_stream(sequence, activities, block_size):
-    """Concatenates the activity blocks according to the chosen sequence."""
-    stream = []
-    true_cps = []
+    """Consume disjoint blocks per activity and derive boundaries from their lengths."""
+    if not sequence or block_size < 1:
+        raise ValueError("Provide a nonempty sequence and positive block size")
+    stream, true_cps = [], []
+    offsets = {act: 0 for act in sequence}
     current_step = 0
-    
-    for act_id in sequence:
-        stream.append(activities[act_id])
-        current_step += block_size
-        true_cps.append(current_step)
-        
-    true_cps.pop() # Remove final boundary
+    for i, act_id in enumerate(sequence):
+        if act_id not in activities:
+            raise ValueError(f"No observations available for activity {act_id}")
+        start = offsets[act_id]
+        block = np.asarray(activities[act_id][start:start + block_size])
+        if len(block) != block_size:
+            raise ValueError(f"Not enough distinct observations for activity {act_id}")
+        if block.ndim != 2 or not np.isfinite(block).all():
+            raise ValueError(f"Activity {act_id} must contain finite observation rows")
+        if i and act_id != sequence[i - 1]:
+            true_cps.append(current_step)
+        stream.append(block)
+        offsets[act_id] += len(block)
+        current_step += len(block)
     return np.vstack(stream), true_cps
 
 def run_experiment():
@@ -44,9 +44,7 @@ def run_experiment():
     USE_PCA = False  
     PCA_D = 5  
     
-    # PAMAP2 is sampled at 100Hz (vs WISDM's 20Hz). 
-    # To capture the same physical time duration, we must increase the window sizes.
-    # n=750 is 7.5 seconds of physical movement at 100Hz.
+    # At 100 Hz, n=200 and m=100 correspond to 2 and 1 seconds.
     n = 200
     m = 100
     k_conf = 6
@@ -57,20 +55,23 @@ def run_experiment():
     print(f"Building PAMAP2 stream for sequence: {sequence}")
     
     # Fetch data directly from our dedicated manager
-    activities, block_size = load_pamap2_full_blocks(block_size=1500) # 15 seconds per block
-    #activities, block_size = load_pamap2_blocks(block_size=1500) # 15 seconds per block
-    stream, true_cps = build_stream(sequence, activities, block_size=1500)
+    counts = {act: sequence.count(act) for act in set(sequence)}
+    activities, block_size = load_pamap2_full_blocks(
+        block_size=1500, blocks_per_activity=counts)  # 15 seconds per block
+    stream, true_cps = build_stream(sequence, activities, block_size)
     
     # Preprocessing
     scaler = StandardScaler()
-    stream_processed = scaler.fit_transform(stream)
+    scaler.fit(stream[:n])
+    stream_processed = scaler.transform(stream)
     
     if USE_PCA:
         print(f"Applying PCA (d={PCA_D})...")
         pca = PCA(n_components=PCA_D)
-        stream_processed = pca.fit_transform(stream_processed)
+        pca.fit(stream_processed[:n])
+        stream_processed = pca.transform(stream_processed)
     else:
-        print("Skipping PCA. Streaming 3D signal directly...")
+        print(f"Skipping PCA. Streaming {stream.shape[1]} sensor features...")
 
     # Initialize Models using Refactored Names
     mmd_model = OWR_CPD(
@@ -79,7 +80,8 @@ def run_experiment():
         eta=0.75, 
         nu=0.95, 
         k_conf=k_conf, 
-        factor=1.0
+        factor=1.0,
+        dynamic_gamma=dynamic_gamma
     )
     
     pearson_model = PearsonOWRCPD(
@@ -140,10 +142,10 @@ def run_experiment():
     fig.suptitle(f"PAMAP2 Activity Stream (PCA={USE_PCA})", fontsize=14)
 
     models_data = [
-        ("MMD Model", mmd_scores, mmd_model.eta, mmd_model.global_changepoints, 'teal'),
-        ("Pearson Model", pearson_scores, pearson_model.tau, pearson_model.global_changepoints, 'purple'),
-        ("Hybrid Model", hybrid_scores, hybrid_model.tau, hybrid_model.global_changepoints, 'crimson'),
-        ("Mahalanobis Model", mah_scores, mahalanobis_model.tau, mahalanobis_model.global_changepoints, 'indigo')
+        ("MMD Model", mmd_scores, mmd_model.eta, detection_indices(mmd_model), 'teal'),
+        ("Pearson Model", pearson_scores, pearson_model.tau, detection_indices(pearson_model), 'purple'),
+        ("Hybrid Model", hybrid_scores, hybrid_model.tau, detection_indices(hybrid_model), 'crimson'),
+        ("Mahalanobis Model", mah_scores, mahalanobis_model.tau, detection_indices(mahalanobis_model), 'indigo')
     ]
 
     for idx, (name, scores, threshold, changepoints, color) in enumerate(models_data):
@@ -162,17 +164,8 @@ def run_experiment():
         ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.show()
 
     # --- TERMINAL SUMMARY OUTPUT ---
-    def get_regime_sequence(regime_log):
-        seq = []
-        for r in regime_log:
-            if r != -1:
-                if not seq or seq[-1] != r:
-                    seq.append(r)
-        return seq
-
     print("\n" + "="*50)
     print(f" PAMAP2 EXPERIMENT RESULTS (PCA={USE_PCA})")
     print("="*50)
@@ -187,19 +180,12 @@ def run_experiment():
     ]
 
     for name, model in models:
-        cps = getattr(model, 'global_changepoints', [])
-        regime_log = getattr(model, 'regime_log', [])
-        seq = get_regime_sequence(regime_log)
-        
-        delays = calculate_delays(true_cps, cps)
-        
         print(f" {name}")
-        print(f"  Detected Changes : {cps}")
-        print(f"  Detection Delays : {delays}")
-        print(f"  Mean Delay       : {np.mean(delays) if delays else 0.0:.2f} steps")
-        print(f"  Total Regimes    : {len(set(seq))}")
-        print(f"  Regime Sequence  : {' -> '.join(map(str, seq))}\n")
+        print_detection_summary(true_cps, model)
+        print()
     print("="*50 + "\n")
+
+    plt.show()
 
 if __name__ == "__main__":
     run_experiment()

@@ -1,14 +1,106 @@
 import numpy as np
 
+def validate_parameters(n, m, k_conf, gamma, factor, reg_lambda=None):
+    for name, value in (("n", n), ("m", m), ("k_conf", k_conf)):
+        if not isinstance(value, (int, np.integer)) or value < 1:
+            raise ValueError(f"{name} must be a positive integer")
+    for name, value in (("gamma", gamma), ("factor", factor),
+                        ("reg_lambda", reg_lambda)):
+        if value is not None and (not np.isfinite(value) or value <= 0):
+            raise ValueError(f"{name} must be finite and positive")
+
+
+def squared_distances(X, Y, normalize=False):
+    """Rows are observations; a 1D array represents one observation."""
+    X, Y = np.asarray(X, dtype=float), np.asarray(Y, dtype=float)
+    nx = 0 if X.size == 0 else np.atleast_2d(X).shape[0]
+    ny = 0 if Y.size == 0 else np.atleast_2d(Y).shape[0]
+    if not nx or not ny:
+        return np.empty((nx, ny))
+    X, Y = np.atleast_2d(X), np.atleast_2d(Y)
+    if normalize:
+        X = X / np.maximum(np.linalg.norm(X, axis=1, keepdims=True), 1e-12)
+        Y = Y / np.maximum(np.linalg.norm(Y, axis=1, keepdims=True), 1e-12)
+    # Actual norms also handle zero vectors, whose normalized norm is not one.
+    return np.maximum(np.sum(X * X, axis=1)[:, None]
+                      + np.sum(Y * Y, axis=1)[None, :] - 2 * np.dot(X, Y.T), 0.0)
+
+
+def median_gamma(distances, factor, fallback):
+    pairs = distances[np.triu_indices_from(distances, k=1)]
+    if not pairs.size:
+        return float(fallback)
+    return float(factor / (2 * max(float(np.median(pairs)), 1e-5)))
+
+
+def inverse_gram(K, reg_lambda):
+    """Gram inverse for an empirical operator averaged over n samples."""
+    eye = np.eye(len(K))
+    W = np.linalg.solve(K + len(K) * reg_lambda * eye, eye)
+    return (W + W.T) / 2
+
+
+def slide_inverse(model, incoming):
+    """Update (K + n*lambda*I)^-1; periodically rebuild to limit drift."""
+    X_new = model.X[1:] + [incoming]
+
+    def rebuild():
+        return inverse_gram(model._rbf_kernel(X_new, X_new), model.reg_lambda)
+
+    if model.t % max(model.n, 50) == 0:
+        return rebuild()
+    W = model.active_W
+    if not np.isfinite(W[0, 0]) or W[0, 0] <= 0:
+        return rebuild()
+    reduced = W[1:, 1:] - np.outer(W[1:, 0], W[0, 1:]) / W[0, 0]
+    k = model._rbf_kernel(model.X[1:], incoming).ravel()
+    v = np.dot(reduced, k)
+    diagonal = float(model._rbf_kernel(incoming, incoming)[0, 0])
+    schur = diagonal + model.n * model.reg_lambda - np.dot(k, v)
+    if not np.isfinite(schur) or schur < 0.5 * model.n * model.reg_lambda:
+        return rebuild()
+    updated = np.block([[reduced + np.outer(v, v) / schur, -v[:, None] / schur],
+                        [-v[None, :] / schur, np.array([[1 / schur]])]])
+    return (updated + updated.T) / 2
+
+
+def operator_distance(mmd_squared, delta, W, reg_lambda):
+    """<Delta, (T + lambda I)^-1 Delta>, using the Woodbury identity.
+
+    W=(K+n*lambda*I)^-1 and delta=Phi*Delta. For centered T, use
+    K=H K_XX H and delta=H Phi*Delta. Retain the full ||Delta||^2 term
+    to include directions outside the reference feature span.
+    """
+    value = float((mmd_squared - np.dot(delta, np.dot(W, delta))) / reg_lambda)
+    if not np.isfinite(value):
+        raise FloatingPointError("Non-finite regularized RKHS distance")
+    return max(0.0, value)
+
+
+def pearson_score(model, Z, X, W, mu_K, gamma, h=None):
+    """Uncentered Pearson score: 1/2 <Delta, (T_X + lambda I)^-1 Delta>."""
+    if h is None:
+        h = np.mean(model._rbf_kernel(X, Z, gamma_override=gamma), axis=1)
+    mmd_squared = (np.mean(mu_K)
+                   + np.mean(model._rbf_kernel(Z, Z, gamma_override=gamma))
+                   - 2 * np.mean(h))
+    return 0.5 * operator_distance(mmd_squared, h - mu_K, W, model.reg_lambda)
+
+
 class PearsonOWRCPD:
     def __init__(self, n, m, tau, nu, k_conf, reg_lambda=1e-3, gamma=0.1, factor=1.0, dynamic_gamma=True, normalize_distance=False):
         """
         Open-World Change-Point Detection with Recurrent Regime Recall.
-        - Detection: O(N^2) recursive Pearson Divergence (Exact NeurIPS empirical operator).
-        - Classification: Static Pearson Divergence (Exact NeurIPS formulation).
+        - Detection: Amortized O(n^2 + m^2) recursive Pearson Divergence (regularized RKHS second-moment operator).
+        - Classification: Static Pearson Divergence (regularized RKHS Pearson-type discrepancy).
         - Kernel: Optional Dynamic Median Heuristic bandwidth tuning per regime.
         - Distance: Optional Hypersphere Normalization for scale invariance.
+
+        Detection and classification use the uncentered empirical second
+        moment T_X = sum_j phi(X_j) tensor phi(X_j) / n. reg_lambda is
+        lambda in T_X + lambda I, so the Gram ridge is n * reg_lambda.
         """
+        validate_parameters(n, m, k_conf, gamma, factor, reg_lambda)
         self.n = n                  # Reference window size (and Classification window size)
         self.m = m                  # Analysis window size
         self.tau = tau              # Detection threshold (Pearson Divergence)
@@ -45,31 +137,10 @@ class PearsonOWRCPD:
         self.regime_log = []
 
     def _sq_distances_v0(self, X, Y):
-        """Computes the standard squared Euclidean distance matrix."""
-        X = np.atleast_2d(X)
-        Y = np.atleast_2d(Y)
-        X2 = np.sum(X**2, axis=1).reshape(-1, 1)
-        Y2 = np.sum(Y**2, axis=1).reshape(1, -1)
-        dist_sq = X2 + Y2 - 2.0 * np.dot(X, Y.T)  
-        return np.maximum(dist_sq, 0.0)
+        return squared_distances(X, Y, normalize=False)
 
     def _sq_distances(self, X, Y):
-        """
-        Computes scale-invariant squared Euclidean distance by 
-        internally projecting data onto a unit hypersphere.
-        """
-        X = np.atleast_2d(X)
-        Y = np.atleast_2d(Y)
-        
-        # 1. Internal Normalization (makes the model scale-invariant)
-        X_norm = X / np.maximum(np.linalg.norm(X, axis=1, keepdims=True), 1e-12)
-        Y_norm = Y / np.maximum(np.linalg.norm(Y, axis=1, keepdims=True), 1e-12)
-        
-        # 2. Compute distance in Cosine space
-        # Since vectors are unit length, X^2 + Y^2 is exactly 2.0
-        dist_sq = 2.0 - 2.0 * np.dot(X_norm, Y_norm.T)  
-        
-        return np.maximum(dist_sq, 0.0)
+        return squared_distances(X, Y, normalize=True)
 
     def _get_active_distances(self, X, Y):
         """Routes to the appropriate distance metric based on the normalization toggle."""
@@ -95,56 +166,30 @@ class PearsonOWRCPD:
         
         # Only compute and update via median heuristic if the flag is True
         if self.dynamic_gamma:
-            # Extract only the unique pairwise distances (upper triangle, ignoring diagonal)
-            triu_indices = np.triu_indices_from(dist_sq, k=1)
-            pairwise_sq_dists = dist_sq[triu_indices]
-            
-            # Apply Median Heuristic
-            median_sq_dist = np.median(pairwise_sq_dists)
-            if median_sq_dist == 0:
-                median_sq_dist = 1e-5 # Prevent division by zero
-                
-            self.gamma = self.factor * (1.0 / (2.0 * median_sq_dist)) 
-            print(f"  [Debug] Gamma Heuristic: gamma={self.gamma:.6f}")
-        else:
-            print(f"  [Debug] Using Static Gamma: gamma={self.gamma:.6f}")
-        
+            self.gamma = median_gamma(dist_sq, self.factor, self.gamma)
+
         # Compute K_XX using the active gamma (dynamically tuned or static)
         K_XX = np.exp(-self.gamma * dist_sq)
         
         # Compute exact inverse metric tensor
-        W = np.linalg.inv(K_XX + self.reg_lambda * np.eye(len(X_arr)))
+        W = inverse_gram(K_XX, self.reg_lambda)
 
         # Compute the reference mean embedding vector
         mu_K = np.mean(K_XX, axis=1)
 
-        # Diagnostic prints
-        print(f"  [Debug] K_XX Condition Number: {np.linalg.cond(K_XX + self.reg_lambda * np.eye(len(K_XX))):.2e}")
-        if self.dynamic_gamma:
-            print(f"  [Debug] Distance Variance: {np.var(pairwise_sq_dists):.4f}")
-        print(f"  [Debug] K_XX Mean Off-Diagonal: {np.mean(K_XX[np.triu_indices_from(K_XX, k=1)]):.4f}")
-        
         return W, mu_K, self.gamma
 
     def _compute_pearson_divergence(self, Z, regime_dict):
         """
-        Computes the exact NeurIPS Empirical Pearson Divergence score.
-        Evaluates the quadratic form of the difference vector projected 
-        through the uncentered metric tensor W.
+        Compute 1/2 <mu_Z-mu_X, (T_X + lambda I)^-1 (mu_Z-mu_X)>.
+        T_X is the uncentered reference second moment, averaged over X.
         """
         X_i = regime_dict['X']
         W_i = regime_dict['W']
         mu_K_i = regime_dict['mu_K']
         gamma_i = regime_dict['gamma']
         
-        # Cross-kernel vector using historical gamma
-        h_iZ = np.mean(self._rbf_kernel(X_i, Z, gamma_override=gamma_i), axis=1)
-        
-        # Compute the exact difference vector
-        delta = h_iZ - mu_K_i
-        
-        # Exact NeurIPS structural divergence score
-        return 0.5 * float(np.dot(W_i @ delta, delta))
+        return pearson_score(self, Z, X_i, W_i, mu_K_i, gamma_i)
 
     def update(self, x):
         """Main online streaming process."""
@@ -180,32 +225,16 @@ class PearsonOWRCPD:
                 self.active_h = np.mean(self._rbf_kernel(self.X, self.Y), axis=1)
                 self.state = "ACTIVE"
                 
-        # --- PHASE 3: Active Monitoring (O(N^2) Sliding Window) ---
+        # --- PHASE 3: Active Monitoring (Recursive Sliding Window) ---
         elif self.state == "ACTIVE":
             x_t = x                 # Entering Y
             x_t_m = self.Y[0]       # Leaving Y, entering X
             
-            # 1. Downdate W
-            w11 = self.active_W[0, 0]
-            w12 = self.active_W[0, 1:]
-            w21 = self.active_W[1:, 0]
-            W22 = self.active_W[1:, 1:]
-            
-            W_reduced = W22 - np.outer(w21, w12) / w11
-            
-            # 2. Update W
-            X_reduced = self.X[1:]  
+            # W = (K_XX + n * lambda I)^-1, with fixed gamma.
+            self.active_W = slide_inverse(self, x_t_m)
+            X_reduced = self.X[1:]
             k_in = self._rbf_kernel(X_reduced, x_t_m).flatten()
-            
-            v = W_reduced @ k_in
-            schur_scalar = max(1e-12, (1.0 + self.reg_lambda) - np.dot(k_in, v))
-            beta = 1.0 / schur_scalar
-            
-            self.active_W = np.block([
-                [W_reduced + beta * np.outer(v, v), -beta * v[:, None]],
-                [-beta * v[None, :],                np.array([[beta]])]
-            ])
-            
+
             # 3. Update h vector recursively
             h_reduced = self.active_h[1:].copy() 
             k_in_xt = self._rbf_kernel(X_reduced, x_t).flatten()
@@ -221,12 +250,13 @@ class PearsonOWRCPD:
             self.X.append(x_t_m)
             self.regime_log.append(self.active_regime_id)
             
-            # 4. Evaluate Exact NeurIPS Pearson Divergence
+            # 4. Evaluate regularized RKHS Pearson-type discrepancy
             # Dynamically recalculate the sliding reference mean
             self.active_mu_K = np.mean(self._rbf_kernel(self.X, self.X), axis=1)
             
-            delta = self.active_h - self.active_mu_K
-            score = 0.5 * float(np.dot(self.active_W @ delta, delta))
+            score = pearson_score(
+                self, self.Y, self.X, self.active_W, self.active_mu_K,
+                self.gamma, h=self.active_h)
             
             if score > self.tau:
                 self.consec += 1

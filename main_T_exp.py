@@ -1,4 +1,7 @@
 import numpy as np
+from main_mmd_pearson import (
+    detection_indices, get_regime_sequence, calculate_delays, print_detection_summary,
+)
 import matplotlib.pyplot as plt
 
 # Import all four OWR models 
@@ -7,27 +10,7 @@ from model.owcl_pearson import PearsonOWRCPD
 from model.owcl_p_coh import HybridOWRCPD          
 from model.owcl_mah import MahalanobisOWRCPD       
 
-def get_regime_sequence(regime_log: list) -> str:
-    """Filters out -1 (warmup phases) and compresses consecutive identical regimes."""
-    seq = []
-    for r in regime_log:
-        if r != -1:
-            if not seq or seq[-1] != r:
-                seq.append(r)
-    return " -> ".join(map(str, seq)) if seq else "None"
 
-def calculate_delays(true_cps: list, detected_cps: list) -> list:
-    """
-    Calculates the delay for each detected change point.
-    Matches each detection to the most recent true change point that occurred before it.
-    """
-    delays = []
-    for d_cp in detected_cps:
-        valid_true_cps = [t_cp for t_cp in true_cps if t_cp <= d_cp]
-        if valid_true_cps:
-            closest_true = max(valid_true_cps)
-            delays.append(d_cp - closest_true)
-    return delays
 
 def generate_moment_matched_stream(tier="T1", segment_length=700, seed=42):
     """
@@ -113,7 +96,8 @@ def main():
     # Initialize Models
     mmd_model = OWR_CPD(
         n=n, m=m, eta=0.04, nu=configs[TIER]["mmd_nu"], 
-        k_conf=k_conf, gamma=gamma
+        k_conf=k_conf, gamma=gamma,
+        dynamic_gamma=dynamic_gamma
     )
     
     pearson_model = PearsonOWRCPD(
@@ -165,19 +149,8 @@ def main():
     ]
 
     for name, model in models_summary:
-        cps = getattr(model, 'global_changepoints', [])
-        regime_log = getattr(model, 'regime_log', [])
-        
-        delays = calculate_delays(actual_cps, cps)
-        seq_str = get_regime_sequence(regime_log)
-        total_regimes = len(set(r for r in regime_log if r != -1))
-        
         print(f"\n {name}")
-        print(f"  Detected Changes : {cps}")
-        print(f"  Detection Delays : {delays}")
-        print(f"  Mean Delay       : {np.mean(delays) if delays else 0.0:.2f} steps")
-        print(f"  Total Regimes    : {total_regimes}")
-        print(f"  Regime Sequence  : {seq_str}")
+        print_detection_summary(actual_cps, model)
     print("="*50)
 
     # Visualization
@@ -203,7 +176,7 @@ def main():
         thresh = getattr(model, 'eta', getattr(model, 'tau', 0.1))
         ax.axhline(y=thresh, color="orange", linestyle="--", label="Detection Threshold")
         
-        for cp in model.global_changepoints:
+        for cp in detection_indices(model):
             ax.axvline(x=cp, color="red", linestyle="-", linewidth=1.5)
         ax.set_title(f"{name} OWR-CPD Model")
         ax.legend(loc="upper left")

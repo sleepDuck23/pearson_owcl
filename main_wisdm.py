@@ -1,4 +1,7 @@
 import numpy as np
+from main_mmd_pearson import (
+    detection_indices, get_regime_sequence, calculate_delays, print_detection_summary,
+)
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
@@ -9,60 +12,53 @@ from model.owcl_pearson import PearsonOWRCPD       # Refactored class
 from model.owcl_p_coh import HybridOWRCPD          # Refactored class
 from model.owcl_mah import MahalanobisOWRCPD       # Refactored class
 
-def get_regime_sequence(regime_log: list) -> str:
-    """Filters out -1 (warmup phases) and compresses consecutive identical regimes."""
-    seq = []
-    for r in regime_log:
-        if r != -1:
-            if not seq or seq[-1] != r:
-                seq.append(r)
-    return " -> ".join(map(str, seq)) if seq else "None"
 
-def calculate_delays(true_cps: list, detected_cps: list) -> list:
-    """
-    Calculates the delay for each detected change point.
-    Matches each detection to the most recent true change point that occurred before it.
-    """
-    delays = []
-    for d_cp in detected_cps:
-        valid_true_cps = [t_cp for t_cp in true_cps if t_cp <= d_cp]
-        if valid_true_cps:
-            closest_true = max(valid_true_cps)
-            delays.append(d_cp - closest_true)
-    return delays
 
-def load_wisdm_data():
-    """
-    Data Hook for WISDM. 
-    Simulating 7 distinct physical activities (WISDM classes: Walk, Jog, Stairs, Sit, Stand, etc.)
-    """
-    print("Loading WISDM dataset...")
+def generate_synthetic_activity_data(blocks_per_activity=None):
+    """Synthetic Gaussian activity surrogate; this does not load WISDM recordings."""
+    print("Generating synthetic activity data (WISDM placeholder)...")
     block_size = 2500
-    np.random.seed(42)
-    
-    activities = {
-        0: np.random.normal(0, 0.5, (block_size, 3)) + [1.0, 0.0, 9.8],   # Act 0
-        1: np.random.normal(0, 1.5, (block_size, 3)) + [0.0, 2.0, 9.8],   # Act 1
-        2: np.random.normal(0, 0.8, (block_size, 3)) + [0.5, 0.5, 9.8],   # Act 2
-        3: np.random.normal(0, 0.7, (block_size, 3)) + [-0.5, -0.5, 9.8], # Act 3
-        4: np.random.normal(0, 0.1, (block_size, 3)) + [0.0, 0.0, 9.8],   # Act 4 (Static)
-        5: np.random.normal(0, 0.1, (block_size, 3)) + [0.0, 9.8, 0.0],   # Act 5 (Static)
-        6: np.random.normal(0, 0.1, (block_size, 3)) + [9.8, 0.0, 0.0]    # Act 6 (Static)
+    rng = np.random.RandomState(42)
+    specifications = {
+        0: (0.5, [1.0, 0.0, 9.8]),
+        1: (1.5, [0.0, 2.0, 9.8]),
+        2: (0.8, [0.5, 0.5, 9.8]),
+        3: (0.7, [-0.5, -0.5, 9.8]),
+        4: (0.1, [0.0, 0.0, 9.8]),
+        5: (0.1, [0.0, 9.8, 0.0]),
+        6: (0.1, [9.8, 0.0, 0.0]),
     }
+    counts = blocks_per_activity if blocks_per_activity is not None else dict.fromkeys(specifications, 1)
+    activities = {}
+    for act, count in sorted(counts.items()):
+        if act not in specifications or not isinstance(count, (int, np.integer)) or count < 1:
+            raise ValueError("Activity IDs and block counts must be valid")
+        std, mean = specifications[act]
+        activities[act] = rng.normal(0, std, (count * block_size, 3)) + mean
     return activities, block_size
 
+
 def build_stream(sequence, activities, block_size):
-    """Concatenates the activity blocks according to the chosen sequence."""
-    stream = []
-    true_cps = []
+    """Consume disjoint blocks per activity and derive boundaries from their lengths."""
+    if not sequence or block_size < 1:
+        raise ValueError("Provide a nonempty sequence and positive block size")
+    stream, true_cps = [], []
+    offsets = {act: 0 for act in sequence}
     current_step = 0
-    
-    for act_id in sequence:
-        stream.append(activities[act_id])
-        current_step += block_size
-        true_cps.append(current_step)
-        
-    true_cps.pop() # Remove final boundary
+    for i, act_id in enumerate(sequence):
+        if act_id not in activities:
+            raise ValueError(f"No observations available for activity {act_id}")
+        start = offsets[act_id]
+        block = np.asarray(activities[act_id][start:start + block_size])
+        if len(block) != block_size:
+            raise ValueError(f"Not enough distinct observations for activity {act_id}")
+        if block.ndim != 2 or not np.isfinite(block).all():
+            raise ValueError(f"Activity {act_id} must contain finite observation rows")
+        if i and act_id != sequence[i - 1]:
+            true_cps.append(current_step)
+        stream.append(block)
+        offsets[act_id] += len(block)
+        current_step += len(block)
     return np.vstack(stream), true_cps
 
 def run_experiment():
@@ -79,26 +75,27 @@ def run_experiment():
     sequence = [0, 1, 0, 2, 3, 2, 1, 3, 0, 2, 3]
     
     print(f"Building stream for sequence: {sequence}")
-    activities, block_size = load_wisdm_data()
+    counts = {act: sequence.count(act) for act in set(sequence)}
+    activities, block_size = generate_synthetic_activity_data(counts)
     stream, true_cps = build_stream(sequence, activities, block_size)
+
+    # Downsample before fitting: n always denotes observations seen by the model.
+    print(f"Downsampling stream by factor of {DOWNSAMPLE_RATE}...")
+    stream = stream[::DOWNSAMPLE_RATE]
+    true_cps = [(cp + DOWNSAMPLE_RATE - 1) // DOWNSAMPLE_RATE for cp in true_cps]
     
-    # Preprocessing: StandardScaler is mandatory to center physical gravity biases
+    # Freeze preprocessing after the initial reference window; no future fitting.
     scaler = StandardScaler()
-    stream_processed = scaler.fit_transform(stream)
+    scaler.fit(stream[:n])
+    stream_processed = scaler.transform(stream)
     
     if USE_PCA:
         print(f"Applying PCA (d={PCA_D})...")
         pca = PCA(n_components=PCA_D)
-        stream_processed = pca.fit_transform(stream_processed)
+        pca.fit(stream_processed[:n])
+        stream_processed = pca.transform(stream_processed)
     else:
         print("Skipping PCA. Streaming 3D signal directly...")
-
-    # --- DOWNSAMPLING BLOCK ---
-    print(f"Downsampling stream by factor of {DOWNSAMPLE_RATE}...")
-    stream_processed = stream_processed[::DOWNSAMPLE_RATE]
-    
-    # Adjust ground truth change points to match the new shortened timeline
-    true_cps = [int(cp / DOWNSAMPLE_RATE) for cp in true_cps]
 
     # Initialize Models using Refactored Names
     mmd_model = OWR_CPD(
@@ -106,7 +103,8 @@ def run_experiment():
         m=m, 
         eta=0.06, 
         nu=0.96, 
-        k_conf=k_conf
+        k_conf=k_conf,
+        dynamic_gamma=dynamic_gamma
     )
     
     pearson_model = PearsonOWRCPD(
@@ -164,13 +162,13 @@ def run_experiment():
 
     # Plotting
     fig, axes = plt.subplots(4, 1, figsize=(12, 10), sharex=True)
-    fig.suptitle(f"WISDM Activity Stream (PCA={USE_PCA})", fontsize=14)
+    fig.suptitle(f"Synthetic Activity Stream (WISDM placeholder) (PCA={USE_PCA})", fontsize=14)
 
     models_data = [
-        ("MMD Model", mmd_scores, mmd_model.eta, mmd_model.global_changepoints, 'teal'),
-        ("Pearson Model", pearson_scores, pearson_model.tau, pearson_model.global_changepoints, 'purple'),
-        ("Hybrid Model", hybrid_scores, hybrid_model.tau, hybrid_model.global_changepoints, 'crimson'),
-        ("Mahalanobis Model", mah_scores, mahalanobis_model.tau, mahalanobis_model.global_changepoints, 'indigo')
+        ("MMD Model", mmd_scores, mmd_model.eta, detection_indices(mmd_model), 'teal'),
+        ("Pearson Model", pearson_scores, pearson_model.tau, detection_indices(pearson_model), 'purple'),
+        ("Hybrid Model", hybrid_scores, hybrid_model.tau, detection_indices(hybrid_model), 'crimson'),
+        ("Mahalanobis Model", mah_scores, mahalanobis_model.tau, detection_indices(mahalanobis_model), 'indigo')
     ]
 
     for idx, (name, scores, threshold, changepoints, color) in enumerate(models_data):
@@ -189,11 +187,10 @@ def run_experiment():
         ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.show()
 
     # --- TERMINAL SUMMARY OUTPUT ---
     print("\n" + "="*50)
-    print(f" WISDM EXPERIMENT RESULTS (PCA={USE_PCA})")
+    print(f" SYNTHETIC ACTIVITY RESULTS (WISDM placeholder) (PCA={USE_PCA})")
     print("="*50)
     print(f" GROUND TRUTH Sequence: {' -> '.join(map(str, sequence))}")
     print(f" True Change Points   : {true_cps}\n")
@@ -206,23 +203,12 @@ def run_experiment():
     ]
 
     for name, model in models_summary:
-        cps = getattr(model, 'global_changepoints', [])
-        regime_log = getattr(model, 'regime_log', [])
-        
-        # Calculate Delays
-        delays = calculate_delays(true_cps, cps)
-        
-        # We process the sequence directly from the model's regime log
-        seq_str = get_regime_sequence(regime_log)
-        total_regimes = len(set(r for r in regime_log if r != -1))
-        
         print(f" {name}")
-        print(f"  Detected Changes : {cps}")
-        print(f"  Detection Delays : {delays}")
-        print(f"  Mean Delay       : {np.mean(delays) if delays else 0.0:.2f} steps")
-        print(f"  Total Regimes    : {total_regimes}")
-        print(f"  Regime Sequence  : {seq_str}\n")
+        print_detection_summary(true_cps, model)
+        print()
     print("="*50 + "\n")
+
+    plt.show()
 
 if __name__ == "__main__":
     run_experiment()

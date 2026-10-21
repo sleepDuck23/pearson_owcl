@@ -8,17 +8,22 @@
 \newcommand{\HH}{\mathcal H}
 \newcommand{\E}{\mathbb E}
 \newcommand{\Prob}{\mathbb P}
-\newcommand{\inner}[2]{\langle #1,#2\rangle_{\HH}}
-\newcommand{\norm}[1]{\lVert #1\rVert_{\HH}}
-\newcommand{\pos}[1]{[#1]_+}
+\newcommand{\inner}[2]{\left\langle #1,#2\right\rangle_{\HH}}
+\newcommand{\norm}[1]{\left\lVert #1\right\rVert_{\HH}}
+\newcommand{\pos}[1]{\left[#1\right]_+}
+
+% Proof headings: use these instead of \paragraph inside proofs.
+\newcommand{\proofstep}[1]{%
+  \par\smallskip
+  \noindent\textbf{#1}\enspace\ignorespaces
+}
 
 \newtheorem{assumption}{Assumption}
 \newtheorem{lemma}{Lemma}
 \newtheorem{theorem}{Theorem}
-\newtheorem{proposition}{Proposition}
 \newtheorem{remark}{Remark}
 
-\title{Energy-Normalized RKHS Pearson Classification:
+\title{Energy-Normalized RKHS Pearson Classification:\\
 Threshold and Separation Guarantees}
 \author{}
 \date{}
@@ -26,514 +31,1127 @@ Threshold and Separation Guarantees}
 \begin{document}
 \maketitle
 
-\section{Pearson score and energy normalization}
+\section{Pearson discrepancy and energy normalization}
 
-Let $\HH$ be a real separable RKHS with measurable
-feature map $\phi$.
-For a reference distribution $P_i$, define
+Let $\HH$ be a real separable RKHS with measurable feature
+map $\phi$. For a reference distribution $P_i$, define
 \[
-    \mu_{P_i}=\E_{P_i}\phi(X),
-    \qquad
-    T_{P_i}=\E_{P_i}[\phi(X)\otimes\phi(X)],
-    \qquad
-    A_i=T_{P_i}+\lambda I,
+\mu_i=\E_{P_i}\phi(X),
+\qquad
+T_i=\E_{P_i}[\phi(X)\otimes\phi(X)],
+\qquad
+A_i=T_i+\lambda I,
 \]
-where $\lambda>0$.
-For an incoming distribution $Q$, set
+where $\lambda>0$ and the outer-product operator is defined by
 \[
-    \Delta_i=\mu_Q-\mu_{P_i}.
+(u\otimes v)f=\inner{v}{f}u.
+\]
+For an incoming distribution $Q$, write
+\[
+\mu_Q=\E_Q\phi(Z),
+\qquad
+\Delta_i=\mu_Q-\mu_i.
 \]
 
-The regularized RKHS Pearson-type score is
+We use the regularized RKHS Pearson-type discrepancy
 \begin{equation}
-    D_i
-    =
-    \frac12\inner{\Delta_i}{A_i^{-1}\Delta_i}.
-    \label{eq:pearson}
+D_i(Q)=\frac12\inner{\Delta_i}{A_i^{-1}\Delta_i}.
+\label{eq:pearson}
 \end{equation}
-With
+Its connection to Pearson is the quadratic variational form
+\begin{equation}
+D_i(Q)
+=
+\sup_{f\in\HH}
+\left\{
+\E_Q f-\E_{P_i}f
+-\frac12\left(\E_{P_i}f^2+\lambda\norm{f}^2\right)
+\right\}.
+\label{eq:variational}
+\end{equation}
+Indeed, the expression being maximized equals
 \[
-    v_i=A_i^{-1/2}\mu_Q,
-    \qquad
-    w_i=A_i^{-1/2}\mu_{P_i},
+\inner{f}{\Delta_i}-\frac12\inner{f}{A_i f}
+=
+D_i(Q)
+-\frac12
+\norm{A_i^{1/2}(f-A_i^{-1}\Delta_i)}^2.
 \]
-this becomes $D_i=\frac12\norm{v_i-w_i}^2$.
-Thus, $A_i^{-1}$ supplies the reference-dependent
-geometry.
 
-Define the total embedding energy and normalized score by
+Let
+\[
+v_i=A_i^{-1/2}\mu_Q,
+\qquad
+w_i=A_i^{-1/2}\mu_i.
+\]
+Then
+\[
+D_i(Q)=\frac12\norm{v_i-w_i}^2.
+\]
+Define the total energy and normalized score by
 \begin{align}
-    E_i
-    &:=
-    \inner{\mu_Q}{A_i^{-1}\mu_Q}
-    +
-    \inner{\mu_{P_i}}{A_i^{-1}\mu_{P_i}},
-    \label{eq:energy}\\
-    S_i
-    &:=
-    \frac{D_i}{E_i}
-    =
-    \frac{\norm{v_i-w_i}^2}
-    {2(\norm{v_i}^2+\norm{w_i}^2)}.
-    \label{eq:normalized-score}
+E_i(Q)
+&=
+\inner{\mu_Q}{A_i^{-1}\mu_Q}
++\inner{\mu_i}{A_i^{-1}\mu_i},
+\label{eq:energy}
+\\
+S_i(Q)
+&=
+\frac{D_i(Q)}{E_i(Q)}
+=
+\frac{\norm{v_i-w_i}^2}
+{2(\norm{v_i}^2+\norm{w_i}^2)}.
+\label{eq:score}
 \end{align}
-When $E_i>0$, $0\le S_i\le1$.
-This normalization retains the Pearson geometry while
-measuring relative rather than absolute discrepancy.
-It defines a normalized score, not the classical
-Pearson divergence.
+Thus, normalization preserves the reference second-moment
+geometry and measures discrepancy relative to total
+embedding energy. It defines a normalized Pearson-type score,
+not the classical Pearson divergence.
 
-\section{Sampling assumptions and empirical score}
+If $E_i(Q)=0$, define $S_i(Q)=0$.
+Since
+\[
+\norm{v_i-w_i}^2
+\le2(\norm{v_i}^2+\norm{w_i}^2),
+\]
+we have $0\le S_i(Q)\le1$.
 
-\begin{assumption}[Kernel and samples]
+\section{Assumptions and empirical quantities}
+
+\begin{assumption}[Kernel and sampling]
 \label{ass:sampling}
 The positive-semidefinite kernel is fixed before sampling
 and satisfies
 \[
-    k(x,y)\ge0,
-    \qquad
-    k(x,x)\le K
+k(x,y)\ge0,
+\qquad
+k(x,x)\le K
 \]
-for all $x,y$, with $K>0$.
-
-The reference and incoming samples satisfy
+for all $x,y$, where $K>0$.
+The two windows are independent and satisfy
 \[
-    X_1,\ldots,X_n\overset{\mathrm{iid}}{\sim}P_i,
-    \qquad
-    Z_1,\ldots,Z_n\overset{\mathrm{iid}}{\sim}Q,
+X_1,\ldots,X_n\overset{\mathrm{iid}}{\sim}P_i,
+\qquad
+Z_1,\ldots,Z_n\overset{\mathrm{iid}}{\sim}Q.
 \]
-and the two samples are independent.
 \end{assumption}
+
+These kernel assumptions imply
+\begin{equation}
+\norm{\phi(x)}\le\sqrt K,
+\qquad
+\norm{\phi(x)-\phi(y)}\le\sqrt{2K}.
+\label{eq:feature-bounds}
+\end{equation}
+Indeed,
+\[
+\norm{\phi(x)-\phi(y)}^2
+=k(x,x)+k(y,y)-2k(x,y)\le2K.
+\]
+The second bound uses pointwise nonnegativity of the kernel.
 
 Define
 \[
-    \widehat\mu_i=\frac1n\sum_{j=1}^n\phi(X_j),
-    \qquad
-    \widehat\mu_Q=\frac1n\sum_{j=1}^n\phi(Z_j),
+\widehat\mu_i=\frac1n\sum_{j=1}^n\phi(X_j),
+\qquad
+\widehat\mu_Q=\frac1n\sum_{j=1}^n\phi(Z_j),
 \]
 and
 \[
-    \widehat T_i
-    =\frac1n\sum_{j=1}^n\phi(X_j)\otimes\phi(X_j),
-    \qquad
-    \widehat A_i=\widehat T_i+\lambda I.
+\widehat T_i
+=\frac1n\sum_{j=1}^n\phi(X_j)\otimes\phi(X_j),
+\qquad
+\widehat A_i=\widehat T_i+\lambda I.
 \]
 The empirical quantities are
 \begin{align}
-    \widehat D_i
-    &:=
-    \frac12
-    \inner{\widehat\mu_Q-\widehat\mu_i}
-    {\widehat A_i^{-1}(\widehat\mu_Q-\widehat\mu_i)},
-    \\
-    \widehat E_i
-    &:=
-    \inner{\widehat\mu_Q}
-    {\widehat A_i^{-1}\widehat\mu_Q}
-    +
-    \inner{\widehat\mu_i}
-    {\widehat A_i^{-1}\widehat\mu_i},
-    \\
-    \widehat S_i&:=\frac{\widehat D_i}{\widehat E_i}.
+\widehat D_i
+&=
+\frac12
+\inner{\widehat\mu_Q-\widehat\mu_i}
+{\widehat A_i^{-1}(\widehat\mu_Q-\widehat\mu_i)},
+\\
+\widehat E_i
+&=
+\inner{\widehat\mu_Q}
+{\widehat A_i^{-1}\widehat\mu_Q}
++
+\inner{\widehat\mu_i}
+{\widehat A_i^{-1}\widehat\mu_i},
+\\
+\widehat S_i
+&=\frac{\widehat D_i}{\widehat E_i}.
 \end{align}
-If $\widehat E_i=0$, define $\widehat S_i=0$.
-In this case both empirical embeddings, and hence
-$\widehat D_i$, are zero.
+Set $\widehat S_i=0$ if $\widehat E_i=0$.
+The same squared-norm inequality as above gives
+$0\le\widehat S_i\le1$.
 
-The incoming window is accepted as compatible with regime
+The incoming window is accepted as compatible with reference
 $i$ when $\widehat S_i\le\eta$.
 
-\begin{assumption}[Reference embedding energy]
+\begin{assumption}[Reference embedding lower bound]
 \label{ass:energy}
 A known constant $m_0>0$ satisfies
 \[
-    \norm{\mu_{P_i}}\ge m_0.
+\norm{\mu_i}\ge m_0.
 \]
 \end{assumption}
 
-Assumption~\ref{ass:energy} prevents the normalization
-denominator from becoming arbitrarily small under the
-null. It concerns the reference distribution only.
-For a finite memory, it may be imposed uniformly over
-stored regimes or replaced by regime-specific constants.
+This assumption controls the normalization denominator
+under the null. It is separate from the Pearson separation
+assumption introduced below.
 
-\section{Two useful energy bounds}
+\section{Deterministic energy bounds}
 
-Introduce the empirical midpoint embedding
+\subsection{Basic operator inequalities}
+
+For every $f\in\HH$, Cauchy--Schwarz gives
 \[
-    \widehat c_i
-    =\frac{\widehat\mu_Q+\widehat\mu_i}{2}.
+\begin{aligned}
+\inner{f}{\widehat T_i f}
+&=\frac1n\sum_{j=1}^n
+|\inner{f}{\phi(X_j)}|^2\\
+&\le\frac1n\sum_{j=1}^n
+\norm{f}^2\norm{\phi(X_j)}^2\\
+&\le K\norm{f}^2.
+\end{aligned}
 \]
-The parallelogram identity in the
-$\widehat A_i^{-1}$ metric gives
-\begin{equation}
-    \widehat E_i
-    =
-    \widehat D_i+
-    2\inner{\widehat c_i}
-           {\widehat A_i^{-1}\widehat c_i}.
-    \label{eq:energy-decomposition}
-\end{equation}
-
-Since $\widehat T_i\preceq KI$,
-\begin{equation}
-    \inner{\widehat c_i}
-          {\widehat A_i^{-1}\widehat c_i}
-    \ge
-    \frac{\norm{\widehat c_i}^2}{K+\lambda}.
-    \label{eq:midpoint-energy}
-\end{equation}
-
-We also need an upper bound valid under any incoming
-distribution.
-
-\begin{lemma}[Uniform upper bound on total energy]
-\label{lem:energy-upper}
-Under Assumption~\ref{ass:sampling},
+Hence
 \[
-    E_i\le M_\lambda,
-    \qquad
-    \widehat E_i\le M_\lambda,
-    \qquad
-    M_\lambda:=
-    \frac K\lambda+\frac K{K+\lambda}.
+0\preceq\widehat T_i\preceq KI,
+\qquad
+\lambda I\preceq\widehat A_i\preceq(K+\lambda)I.
 \]
+Inversion reverses the operator order:
+\begin{equation}
+\frac1{K+\lambda}I
+\preceq\widehat A_i^{-1}
+\preceq\frac1\lambda I.
+\label{eq:inverse-bounds}
+\end{equation}
+The same inequalities hold for $T_i$ and $A_i$.
+
+To justify the inverse-order rule, suppose $A\succeq C$,
+where both operators are bounded, self-adjoint, and bounded
+below by a positive multiple of $I$. Then
+\[
+C^{-1/2}AC^{-1/2}\succeq I,
+\]
+and consequently
+\[
+A^{-1}
+=
+C^{-1/2}(C^{-1/2}AC^{-1/2})^{-1}C^{-1/2}
+\preceq C^{-1}.
+\]
+This argument remains valid in an infinite-dimensional RKHS.
+
+\subsection{Energy lower bound}
+
+\begin{lemma}[Midpoint decomposition]
+\label{lem:midpoint}
+Let
+\[
+\widehat c_i=\frac{\widehat\mu_Q+\widehat\mu_i}{2}.
+\]
+Then
+\begin{align}
+\widehat E_i
+&=
+\widehat D_i
++2\inner{\widehat c_i}
+{\widehat A_i^{-1}\widehat c_i},
+\label{eq:midpoint}\\
+\widehat E_i
+&\ge
+\widehat D_i+\frac{2\norm{\widehat c_i}^2}{K+\lambda}.
+\label{eq:energy-lower}
+\end{align}
 \end{lemma}
 
 \begin{proof}
-The incoming term satisfies
+Write $x=\widehat\mu_Q$, $y=\widehat\mu_i$, and
+$B=\widehat A_i^{-1}$.
+Since $B$ is self-adjoint,
 \[
-    \inner{\widehat\mu_Q}
-          {\widehat A_i^{-1}\widehat\mu_Q}
-    \le
-    \frac{\norm{\widehat\mu_Q}^2}{\lambda}
-    \le\frac K\lambda.
+\widehat D_i
+=
+\frac12\inner{x}{Bx}
++\frac12\inner{y}{By}
+-\inner{x}{By}.
 \]
-The empirical covariance operator is positive semidefinite,
-so
+On the other hand,
 \[
-    \widehat T_i
-    \succeq\widehat\mu_i\otimes\widehat\mu_i.
+\begin{aligned}
+2\inner{\widehat c_i}{B\widehat c_i}
+&=\frac12\inner{x+y}{B(x+y)}\\
+&=\frac12\inner{x}{Bx}
++\frac12\inner{y}{By}
++\inner{x}{By}.
+\end{aligned}
 \]
-Inversion reverses the order, giving
+Adding cancels the cross terms and proves
+\eqref{eq:midpoint}.
+
+Using \eqref{eq:inverse-bounds},
 \[
-    \inner{\widehat\mu_i}
-          {\widehat A_i^{-1}\widehat\mu_i}
-    \le
-    \frac{\norm{\widehat\mu_i}^2}
-         {\lambda+\norm{\widehat\mu_i}^2}
-    \le\frac K{K+\lambda}.
+\inner{\widehat c_i}{B\widehat c_i}
+\ge\frac{\norm{\widehat c_i}^2}{K+\lambda},
 \]
-The population proof is identical, using
-$T_{P_i}\succeq\mu_{P_i}\otimes\mu_{P_i}$.
+which proves \eqref{eq:energy-lower}.
+\end{proof}
+
+\subsection{Energy upper bound}
+
+\begin{lemma}[Uniform energy upper bound]
+\label{lem:upper}
+For every incoming distribution $Q$,
+\[
+E_i(Q)\le M_\lambda,
+\qquad
+\widehat E_i\le M_\lambda,
+\]
+where
+\begin{equation}
+M_\lambda=\frac K\lambda+\frac K{K+\lambda}.
+\label{eq:M}
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+\proofstep{Step 1: Bound the incoming energy.}
+Every empirical mean embedding satisfies
+\[
+\norm{\frac1n\sum_j\phi(X_j)}
+\le\frac1n\sum_j\norm{\phi(X_j)}
+\le\sqrt K.
+\]
+Consequently,
+\[
+\inner{\widehat\mu_Q}
+{\widehat A_i^{-1}\widehat\mu_Q}
+\le\frac{\norm{\widehat\mu_Q}^2}{\lambda}
+\le\frac K\lambda.
+\]
+
+\proofstep{Step 2: Use the reference covariance identity.}
+Write $y=\widehat\mu_i$.
+Expanding the empirical covariance gives
+\[
+\widehat T_i-y\otimes y
+=
+\frac1n\sum_j
+(\phi(X_j)-y)\otimes(\phi(X_j)-y)
+\succeq0.
+\]
+Therefore,
+\[
+\widehat A_i\succeq\lambda I+y\otimes y,
+\qquad
+\widehat A_i^{-1}
+\preceq(\lambda I+y\otimes y)^{-1}.
+\]
+
+\proofstep{Step 3: Evaluate the rank-one inverse along $y$.}
+By definition,
+\[
+(y\otimes y)y=\norm{y}^2y.
+\]
+It follows that
+\[
+(\lambda I+y\otimes y)
+\left(\frac{y}{\lambda+\norm{y}^2}\right)=y.
+\]
+Hence
+\[
+(\lambda I+y\otimes y)^{-1}y
+=\frac{y}{\lambda+\norm{y}^2},
+\]
+including when $y=0$.
+Thus,
+\[
+\begin{aligned}
+\inner{y}{\widehat A_i^{-1}y}
+&\le
+\inner{y}{(\lambda I+y\otimes y)^{-1}y}\\
+&=\frac{\norm{y}^2}{\lambda+\norm{y}^2}\\
+&\le\frac K{\lambda+K}.
+\end{aligned}
+\]
+The last inequality follows because
+$t\mapsto t/(\lambda+t)$ is increasing for $t\ge0$.
+
+Notice that $y$ is an eigenvector of $y\otimes y$ when
+$y\ne0$; we do not assume it is an eigenvector of
+$\widehat T_i$.
+
+\proofstep{Step 4: Add the two terms.}
+We obtain
+\[
+\widehat E_i
+\le\frac K\lambda+\frac K{\lambda+K}.
+\]
+For the population result, repeat the argument using
+\[
+\norm{\mu_Q},\norm{\mu_i}\le\sqrt K
+\]
+and
+\[
+T_i-\mu_i\otimes\mu_i
+=
+\E_{P_i}\big[
+(\phi(X)-\mu_i)\otimes(\phi(X)-\mu_i)
+\big]\succeq0.
+\]
 \end{proof}
 
 \section{Null guarantee}
 
-For $\rho_0\in(0,1)$, define
+Assume $Q=P_i$. For $\rho_0\in(0,1)$, define
 \begin{align}
-    U_0
-    &:=
-    \frac K{n\lambda}
-    \left(1+\sqrt{\log\frac2{\rho_0}}\right)^2,
-    \label{eq:U0}\\
-    a_0
-    &:=
-    \sqrt{\frac K{2n}}
-    \left(1+\sqrt{\log\frac2{\rho_0}}\right),
-    \label{eq:a0}\\
-    H_0
-    &:=
-    \frac{2\pos{m_0-a_0}^2}{K+\lambda},
-    \label{eq:H0}\\
-    \eta_0
-    &:=
-    \frac{U_0}{U_0+H_0}.
-    \label{eq:null-threshold}
+U_0
+&=\frac K{n\lambda}
+\left(1+\sqrt{\log\frac2{\rho_0}}\right)^2,
+\\
+a_0
+&=\sqrt{\frac K{2n}}
+\left(1+\sqrt{\log\frac2{\rho_0}}\right),
+\\
+H_0
+&=\frac{2[m_0-a_0]_+^2}{K+\lambda},
+\\
+\eta_0
+&=\frac{U_0}{U_0+H_0}.
+\label{eq:eta0}
 \end{align}
 
 \begin{theorem}[Acceptance under the null]
 \label{thm:null}
-Under Assumptions~\ref{ass:sampling}
-and~\ref{ass:energy}, if $Q=P_i$, then
+Under Assumptions~\ref{ass:sampling} and~\ref{ass:energy},
 \[
-    \Prob\{\widehat S_i\le\eta_0\}\ge1-\rho_0.
+Q=P_i
+\quad\Longrightarrow\quad
+\Prob\{\widehat S_i\le\eta_0\}\ge1-\rho_0.
 \]
-The threshold is strictly smaller than one whenever
-$m_0>a_0$.
+Moreover, $\eta_0<1$ whenever $m_0>a_0$.
 \end{theorem}
 
 \begin{proof}
-Under the null,
+\proofstep{Step 1: Expected mean-difference error.}
+Write $\mu=\mu_i$ and
 \[
-    \E\norm{\widehat\mu_Q-\widehat\mu_i}^2
-    \le\frac{2K}{n}.
+F=\norm{\widehat\mu_Q-\widehat\mu_i}.
 \]
-Nonnegativity of the kernel implies
+Under the null, independence and centering give
 \[
-    \norm{\phi(x)-\phi(y)}\le\sqrt{2K}.
+\begin{aligned}
+\E F^2
+&=
+\E\norm{(\widehat\mu_Q-\mu)-(\widehat\mu_i-\mu)}^2\\
+&=
+\E\norm{\widehat\mu_Q-\mu}^2
++\E\norm{\widehat\mu_i-\mu}^2\\
+&=\frac2n\left(\E k(X,X)-\norm{\mu}^2\right)
+\le\frac{2K}{n}.
+\end{aligned}
 \]
-Applying one-sided McDiarmid concentration to the
-norm of the mean difference, and using
-$\widehat A_i^{-1}\preceq\lambda^{-1}I$, gives
+Therefore,
 \[
-    \widehat D_i\le U_0
+\E F\le\sqrt{\frac{2K}{n}}.
 \]
-with probability at least $1-\rho_0/2$.
 
-Under $Q=P_i$, the midpoint $\widehat c_i$ is the empirical
-mean of $2n$ iid observations from $P_i$.
-Its expected norm error is at most $\sqrt{K/(2n)}$.
-The same bounded-difference argument gives
+\proofstep{Step 2: Concentration of the mean difference.}
+Replacing one of the $2n$ observations changes $F$
+by at most $\sqrt{2K}/n$. The sum of squared
+bounded-difference constants is
 \[
-    \norm{\widehat c_i-\mu_{P_i}}\le a_0
+2n\left(\frac{\sqrt{2K}}n\right)^2=\frac{4K}{n}.
 \]
-with probability at least $1-\rho_0/2$.
+One-sided McDiarmid concentration yields
+\[
+\Prob\{F-\E F\ge t\}
+\le\exp\left(-\frac{nt^2}{2K}\right).
+\]
+Taking
+\[
+t=\sqrt{\frac{2K}{n}\log\frac2{\rho_0}}
+\]
+gives, with probability at least $1-\rho_0/2$,
+\[
+F\le\sqrt{\frac{2K}{n}}
+\left(1+\sqrt{\log\frac2{\rho_0}}\right).
+\]
+Hence
+\[
+\widehat D_i\le\frac{F^2}{2\lambda}\le U_0.
+\]
 
-On the intersection of these events,
+\proofstep{Step 3: Concentration of the midpoint.}
+Under the null, $\widehat c_i$ is the empirical mean
+of $2n$ iid observations from $P_i$.
+For
 \[
-    \norm{\widehat c_i}\ge\pos{m_0-a_0}.
+G=\norm{\widehat c_i-\mu},
 \]
-Equations~\eqref{eq:energy-decomposition}
-and~\eqref{eq:midpoint-energy} therefore imply
+we have
 \[
-    \widehat E_i\ge\widehat D_i+H_0.
+\E G\le\sqrt{\E G^2}\le\sqrt{\frac K{2n}}.
 \]
-When $H_0>0$,
+Replacing one observation changes $G$ by at most
+$\sqrt{2K}/(2n)$, so the sum of squared constants is
 \[
-    \widehat S_i
-    \le
-    \frac{\widehat D_i}{\widehat D_i+H_0}
-    \le
-    \frac{U_0}{U_0+H_0}.
+2n\left(\frac{\sqrt{2K}}{2n}\right)^2=\frac Kn.
 \]
-If $H_0=0$, the claim follows from
-$\widehat S_i\le1=\eta_0$.
-A union bound completes the proof.
+Therefore,
+\[
+\Prob\{G-\E G\ge t\}
+\le\exp\left(-\frac{2nt^2}{K}\right).
+\]
+Taking
+\[
+t=\sqrt{\frac K{2n}\log\frac2{\rho_0}}
+\]
+gives $G\le a_0$ with probability at least $1-\rho_0/2$.
+
+\proofstep{Step 4: Combine numerator and denominator bounds.}
+By a union bound, both concentration events hold with
+probability at least $1-\rho_0$.
+Their independence is not required.
+
+On their intersection,
+\[
+\norm{\widehat c_i}
+\ge[\norm{\mu}-a_0]_+
+\ge[m_0-a_0]_+.
+\]
+Lemma~\ref{lem:midpoint} gives
+\[
+\widehat E_i\ge\widehat D_i+H_0.
+\]
+If $H_0>0$, then
+\[
+\widehat S_i
+\le\frac{\widehat D_i}{\widehat D_i+H_0}
+\le\frac{U_0}{U_0+H_0},
+\]
+because $d\mapsto d/(d+H_0)$ is increasing.
+If $H_0=0$, then $\eta_0=1$ and the result follows
+from $\widehat S_i\le1$.
 \end{proof}
 
-\section{Alternative guarantee from Pearson separation}
+\section{Standard separation guarantee}
+
+The standard proof controls the full mean-embedding errors
+and the operator error. It is conservative because the
+operator norm controls every feature-space direction,
+including directions unnecessary for a particular pair.
 
 \begin{assumption}[Pearson separation]
 \label{ass:separation}
 For the fixed pair $(Q,P_i)$,
 \[
-    D_i\ge\delta>0.
+D_i(Q)\ge\delta>0.
 \]
 \end{assumption}
 
-For $\rho_1\in(0,1)$, define
+At the population level, Lemma~\ref{lem:upper} immediately
+gives
 \begin{equation}
-    s_1=
-    \sqrt{\frac{K\log(2/\rho_1)}{n\lambda}},
-    \qquad
-    r_1=
-    \frac K\lambda
-    \sqrt{\frac{\log(2/\rho_1)}{2n}}.
-    \label{eq:alternative-radii}
+\boxed{S_i(Q)\ge\frac{\delta}{M_\lambda}.}
+\label{eq:population-separation}
+\end{equation}
+Indeed, $D_i(Q)>0$ implies $E_i(Q)>0$, and
+$E_i(Q)\le M_\lambda$.
+
+\subsection{Joint concentration}
+
+For $\rho_1\in(0,1)$, define
+\begin{align}
+b_n(\rho_1)
+&=\sqrt{\frac Kn}
+\left(1+\sqrt{\log\frac3{\rho_1}}\right),
+\label{eq:b}
+\\
+e_n(\rho_1)
+&=\frac K{\sqrt n}
+\left(1+\sqrt{2\log\frac3{\rho_1}}\right).
+\label{eq:e}
+\end{align}
+
+\begin{lemma}[Mean and operator concentration]
+\label{lem:concentration}
+With probability at least $1-\rho_1$, all three
+inequalities hold:
+\[
+\norm{\widehat\mu_Q-\mu_Q}\le b_n(\rho_1),
+\qquad
+\norm{\widehat\mu_i-\mu_i}\le b_n(\rho_1),
+\]
+and
+\[
+\|\widehat T_i-T_i\|_{\mathrm{op}}\le e_n(\rho_1).
+\]
+\end{lemma}
+
+\begin{proof}
+\proofstep{Step 1: Concentration of one mean embedding.}
+For an iid empirical mean $\widehat\mu$ with population
+mean $\mu$,
+\[
+\E\norm{\widehat\mu-\mu}^2
+=\frac1n\left(\E k(X,X)-\norm{\mu}^2\right)
+\le\frac Kn.
+\]
+Thus
+\[
+\E\norm{\widehat\mu-\mu}\le\sqrt{\frac Kn}.
+\]
+Replacing one observation changes the norm error by
+at most $\sqrt{2K}/n$. McDiarmid gives
+\[
+\Prob\left\{
+\norm{\widehat\mu-\mu}>\sqrt{\frac Kn}+t
+\right\}
+\le\exp\left(-\frac{nt^2}{K}\right).
+\]
+Take
+\[
+t=\sqrt{\frac Kn\log\frac3{\rho_1}}.
+\]
+This proves each mean bound with failure probability
+at most $\rho_1/3$.
+
+\proofstep{Step 2: Expected operator error.}
+Let $V=\phi(X)\otimes\phi(X)$.
+In the Hilbert space of Hilbert--Schmidt operators,
+\[
+\|V\|_{\mathrm{HS}}=\norm{\phi(X)}^2\le K.
+\]
+Independence and centering imply
+\[
+\E\|\widehat T_i-T_i\|_{\mathrm{HS}}^2
+=\frac1n\E\|V-\E V\|_{\mathrm{HS}}^2
+\le\frac{K^2}{n}.
+\]
+Consequently,
+\[
+\E\|\widehat T_i-T_i\|_{\mathrm{HS}}
+\le\frac K{\sqrt n}.
+\]
+
+\proofstep{Step 3: Concentration of the operator error.}
+Replacing one observation changes the Hilbert--Schmidt
+norm error by at most
+\[
+\frac1n
+\|\phi(x)\otimes\phi(x)-\phi(x')\otimes\phi(x')\|_{\mathrm{HS}}
+\le\frac{2K}{n}.
+\]
+Thus,
+\[
+\Prob\left\{
+\|\widehat T_i-T_i\|_{\mathrm{HS}}
+>\frac K{\sqrt n}+t
+\right\}
+\le\exp\left(-\frac{nt^2}{2K^2}\right).
+\]
+Take
+\[
+t=K\sqrt{\frac2n\log\frac3{\rho_1}}
+\]
+and use
+\[
+\|\widehat T_i-T_i\|_{\mathrm{op}}
+\le\|\widehat T_i-T_i\|_{\mathrm{HS}}.
+\]
+This proves the operator bound with failure probability
+at most $\rho_1/3$.
+
+\proofstep{Step 4: Combine the events.}
+A union bound over the two mean bounds and the operator
+bound gives total failure probability at most $\rho_1$.
+\end{proof}
+
+\subsection{Empirical score lower bound}
+
+Define
+\[
+s
+=\sqrt{\frac2\lambda}\,b_n(\rho_1),
+\qquad
+r=\frac{e_n(\rho_1)}{\lambda},
+\]
+and
+\begin{equation}
+L(\delta,\rho_1)
+=
+\frac{[\sqrt\delta-s]_+^2}
+{M_\lambda(1+r)}.
+\label{eq:Lstd}
 \end{equation}
 
-\begin{theorem}[Rejection of a separated regime]
-\label{thm:alternative}
+\begin{theorem}[Alternative guarantee]
+\label{thm:standard}
 Under Assumptions~\ref{ass:sampling}
 and~\ref{ass:separation},
 \[
-    \Prob\left\{
-        \widehat S_i\ge
-        L_S(\delta,\rho_1)
-    \right\}\ge1-\rho_1,
+\Prob\{\widehat S_i\ge
+L(\delta,\rho_1)\}\ge1-\rho_1.
 \]
-where
-\begin{equation}
-    L_S(\delta,\rho_1)
-    :=
-    \frac{\pos{\sqrt\delta-s_1}^2}
-         {M_\lambda(1+r_1)}.
-    \label{eq:normalized-lower}
-\end{equation}
-Consequently, if $\eta<L_S(\delta,\rho_1)$, then
+Consequently, if $\eta<L(\delta,\rho_1)$,
+then
 \[
-    \Prob\{\widehat S_i>\eta\}\ge1-\rho_1.
+\Prob\{\widehat S_i>\eta\}\ge1-\rho_1.
 \]
-This alternative guarantee does not require
-Assumption~\ref{ass:energy}.
 \end{theorem}
 
 \begin{proof}
-Define the fixed population direction
-\[
-    u_i=\frac{A_i^{-1}\Delta_i}{\sqrt{2D_i}}.
-\]
-It satisfies
-\[
-    \inner{u_i}{\Delta_i}=\sqrt{2D_i},
-    \qquad
-    \inner{u_i}{A_i u_i}=1,
-    \qquad
-    \norm{u_i}^2\le\lambda^{-1}.
-\]
+Work on the event of Lemma~\ref{lem:concentration}.
+
+\proofstep{Step 1: Bound the mean-difference error.}
 Set
 \[
-    \widehat d_i
-    =\inner{u_i}{\widehat\mu_Q-\widehat\mu_i},
-    \qquad
-    \widehat q_i
-    =\inner{u_i}{\widehat A_i u_i}.
+\widehat\Delta_i=\widehat\mu_Q-\widehat\mu_i.
+\]
+The triangle inequality gives
+\[
+\begin{aligned}
+\norm{\widehat\Delta_i-\Delta_i}
+&\le
+\norm{\widehat\mu_Q-\mu_Q}
++\norm{\widehat\mu_i-\mu_i}\\
+&\le2b_n(\rho_1).
+\end{aligned}
 \]
 
-The variational representation of the empirical Pearson
-score, restricted to nonnegative multiples of $u_i$, gives
+\proofstep{Step 2: Compare empirical and population metrics.}
+The operator error bound implies
 \[
-    \widehat D_i
-    \ge
-    \sup_{t\ge0}
-    \left\{
-        t\widehat d_i-\frac{t^2}{2}\widehat q_i
-    \right\}
-    =
-    \frac{\pos{\widehat d_i}^2}{2\widehat q_i}.
+\widehat A_i\preceq A_i+e_n(\rho_1)I.
+\]
+Since $A_i\succeq\lambda I$,
+\[
+e_n(\rho_1)I
+\preceq\frac{e_n(\rho_1)}{\lambda}A_i.
+\]
+Hence
+\[
+\widehat A_i
+\preceq(1+r)A_i.
+\]
+Inverting gives
+\[
+\widehat A_i^{-1}
+\succeq\frac{A_i^{-1}}{1+r}.
 \]
 
-For the directional mean,
+\proofstep{Step 3: Apply the reverse triangle inequality.}
+Define
 \[
-    |u_i(x)-u_i(y)|
-    \le\sqrt{2K}\norm{u_i}.
+\|f\|_{A_i^{-1}}
+=\sqrt{\inner{f}{A_i^{-1}f}}.
 \]
-Hoeffding concentration for the $2n$ independent
-summands yields
+Because $A_i^{-1}\preceq\lambda^{-1}I$,
 \[
-    \widehat d_i
-    \ge\sqrt{2D_i}-\sqrt2\,s_1
+\|\widehat\Delta_i-\Delta_i\|_{A_i^{-1}}
+\le\frac{2b_n(\rho_1)}{\sqrt\lambda}.
 \]
-with probability at least $1-\rho_1/2$.
+Therefore,
+\[
+\begin{aligned}
+\|\widehat\Delta_i\|_{A_i^{-1}}
+&\ge
+\left[
+\|\Delta_i\|_{A_i^{-1}}
+-\|\widehat\Delta_i-\Delta_i\|_{A_i^{-1}}
+\right]_+\\
+&\ge
+\left[
+\sqrt{2D_i(Q)}
+-\frac{2b_n(\rho_1)}{\sqrt\lambda}
+\right]_+.
+\end{aligned}
+\]
 
-For the quadratic term,
+\proofstep{Step 4: Lower-bound empirical Pearson.}
+Combining the previous inequalities,
 \[
-    0\le u_i(x)^2\le K\norm{u_i}^2,
-    \qquad
-    \E\widehat q_i=1.
+\begin{aligned}
+\widehat D_i
+&\ge
+\frac{\|\widehat\Delta_i\|_{A_i^{-1}}^2}
+{2(1+r)}\\
+&\ge
+\frac{[\sqrt{D_i(Q)}-s]_+^2}
+{1+r}\\
+&\ge
+\frac{[\sqrt\delta-s]_+^2}
+{1+r}.
+\end{aligned}
 \]
-A second application of Hoeffding gives
-\[
-    \widehat q_i\le1+r_1
-\]
-with probability at least $1-\rho_1/2$.
 
-By a union bound, with probability at least $1-\rho_1$,
+\proofstep{Step 5: Normalize using the energy upper bound.}
+If this lower bound is positive, then $\widehat E_i>0$.
+Lemma~\ref{lem:upper} gives
 \[
-    \widehat D_i
-    \ge
-    \frac{\pos{\sqrt{D_i}-s_1}^2}{1+r_1}
-    \ge
-    \frac{\pos{\sqrt\delta-s_1}^2}{1+r_1}.
+\widehat S_i
+=\frac{\widehat D_i}{\widehat E_i}
+\ge\frac{\widehat D_i}{M_\lambda}
+\ge L(\delta,\rho_1).
 \]
-Lemma~\ref{lem:energy-upper} gives
-$\widehat E_i\le M_\lambda$, so dividing proves the claim.
-If $\widehat E_i=0$, then $\widehat D_i=0$;
-on the event above this is possible only when its stated
-lower bound is zero, in which case the result still holds.
+If the bound is zero, the claim follows from
+$\widehat S_i\ge0$, including the convention for
+$\widehat E_i=0$.
 \end{proof}
 
 \section{Nonempty threshold interval}
 
-The null and alternative guarantees are compatible when
-\begin{equation}
-    \eta_0\le\eta<L_S(\delta,\rho_1).
-    \label{eq:interval}
-\end{equation}
-Since $\eta_0>0$, this certified interval is nonempty
-if and only if
-\begin{equation}
-    \boxed{
-    \delta>
-    \left[
-        s_1+
-        \sqrt{M_\lambda(1+r_1)\eta_0}
-    \right]^2.
-    }
-    \label{eq:nonempty}
-\end{equation}
-This equivalence concerns the displayed bounds, not a
-necessary condition for the classifier to succeed.
-
-Taking $\rho_0=\rho_1=\rho$, set
+Combining the null and standard alternative guarantees,
+a certified threshold satisfies
 \[
-    \ell=\log\frac2\rho,
-    \qquad
-    U=\frac K{n\lambda}(1+\sqrt\ell)^2,
-    \qquad
-    H=
-    \frac2{K+\lambda}
-    \left[
-        m_0-\sqrt{\frac K{2n}}(1+\sqrt\ell)
-    \right]_+^2.
+\boxed{
+\eta_0\le\eta<L(\delta,\rho_1).
+}
 \]
-A valid threshold is
-\begin{equation}
-    \boxed{\eta=\frac{U}{U+H}.}
-\end{equation}
-The corresponding sufficient Pearson separation is
+This interval is nonempty if and only if
+\[
+\eta_0<
+\frac{[\sqrt\delta-s]_+^2}
+{M_\lambda(1+r)}.
+\]
+Since $\eta_0>0$, the positive part must be strictly positive.
+Multiplying by the denominator and taking square roots gives
+\[
+\sqrt\delta-s
+>
+\sqrt{M_\lambda(1+r)\eta_0}.
+\]
+Equivalently,
 \begin{equation}
 \boxed{
 \delta>
+\delta_{\mathrm{crit}}
+:=
 \left[
-    \sqrt{\frac{K\ell}{n\lambda}}
-    +
-    \sqrt{
-        \left(\frac K\lambda+\frac K{K+\lambda}\right)
-        \left(1+\frac K\lambda\sqrt{\frac{\ell}{2n}}\right)
-        \frac{U}{U+H}
-    }
+s
++\sqrt{M_\lambda(1+r)\eta_0}
 \right]^2.
 }
-\label{eq:explicit-condition}
+\label{eq:critical-standard}
+\end{equation}
+This is a necessary and sufficient condition for the
+displayed certified interval to be nonempty, not a necessary
+condition for successful classification.
+
+For $\rho_0=\rho_1=\rho$, write
+\[
+U=\frac K{n\lambda}
+\left(1+\sqrt{\log\frac2\rho}\right)^2,
+\]
+and
+\[
+H=\frac2{K+\lambda}
+\left[
+m_0-\sqrt{\frac K{2n}}
+\left(1+\sqrt{\log\frac2\rho}\right)
+\right]_+^2.
+\]
+Then
+\[
+\eta_0=\frac{U}{U+H},
+\]
+and the explicit condition is
+\[
+\boxed{
+\begin{aligned}
+\delta>
+\Bigg[
+&\sqrt{\frac{2K}{n\lambda}}
+\left(1+\sqrt{\log\frac3\rho}\right)
+\\
+&+
+\sqrt{
+M_\lambda
+\left[
+1+\frac K{\lambda\sqrt n}
+\left(1+\sqrt{2\log\frac3\rho}\right)
+\right]
+\frac{U}{U+H}
+}
+\Bigg]^2.
+\end{aligned}
+}
+\]
+The null proof combines two concentration events, explaining
+$\log(2/\rho)$. The standard alternative combines three,
+explaining $\log(3/\rho)$.
+
+If $m_0\le a_0$, then $\eta_0=1$ and no useful interval
+can be certified. For fixed positive $m_0,K,\lambda,\rho$,
+as $n\to\infty$,
+\[
+U=O(n^{-1}),
+\qquad
+H\longrightarrow\frac{2m_0^2}{K+\lambda}>0.
+\]
+Consequently,
+\[
+\eta_0=O(n^{-1}),
+\qquad
+\delta_{\mathrm{crit}}=O(n^{-1}).
+\]
+
+\appendix
+
+\section{Alternative directional proof}
+
+The standard proof controls errors in all feature-space
+directions. To certify separation of a fixed pair, one can
+instead control a single informative population direction.
+This gives smaller error terms without changing the score
+or its implementation.
+
+Define
+\[
+s_{\mathrm{dir}}
+=\sqrt{\frac K{n\lambda}\log\frac2{\rho_1}},
+\qquad
+r_{\mathrm{dir}}
+=\frac K\lambda
+\sqrt{\frac1{2n}\log\frac2{\rho_1}},
+\]
+and
+\begin{equation}
+L_{\mathrm{dir}}(\delta,\rho_1)
+=
+\frac{[\sqrt\delta-s_{\mathrm{dir}}]_+^2}
+{M_\lambda(1+r_{\mathrm{dir}})}.
+\label{eq:Ldir}
 \end{equation}
 
-A useful null threshold requires
+\begin{theorem}[Directional alternative guarantee]
+\label{thm:directional}
+Under Assumptions~\ref{ass:sampling}
+and~\ref{ass:separation},
 \[
-    m_0>
-    \sqrt{\frac K{2n}}
-    \left(1+\sqrt{\log\frac2\rho}\right).
+\Prob\{\widehat S_i\ge
+L_{\mathrm{dir}}(\delta,\rho_1)\}\ge1-\rho_1.
 \]
-For fixed positive $m_0$, $K$, $\lambda$, and $\rho$,
-the threshold and the sufficient separation in
-\eqref{eq:explicit-condition} are both of order $n^{-1}$.
-
-\section{Interpretation and limitations}
-
-\paragraph{Additional requirement introduced by normalization.}
-Minimum Pearson separation controls the alternative
-numerator. It does not prevent the null denominator from
-being small. The reference embedding lower bound $m_0$
-addresses this separate issue.
-
-For independent $X,X'\sim P_i$,
+Consequently, if $\eta<L_{\mathrm{dir}}(\delta,\rho_1)$,
+then
 \[
-    \norm{\mu_{P_i}}^2=\E[k(X,X')].
+\Prob\{\widehat S_i>\eta\}\ge1-\rho_1.
 \]
-Thus, $m_0$ describes within-regime kernel similarity.
-The diagonal normalization $k(x,x)=1$ alone does not
-supply a useful distribution-uniform positive value
-of $m_0$.
+\end{theorem}
 
-\paragraph{Conservatism of this study.}
-The alternative proof combines a directional Pearson
-lower bound with a uniform upper bound on total energy.
-It is a valid sufficient guarantee, but it does not
-establish that normalization improves the separation
-requirement relative to unnormalized Pearson.
-A sharper analysis would exploit the joint structure
-of the numerator and denominator.
+\begin{proof}
+Write $D=D_i(Q)$, $A=A_i$, and $\Delta=\Delta_i$.
 
-\paragraph{Pairwise versus complete classification.}
-The theorems concern one fixed reference comparison.
-For a memory of several regimes, correct assignment
-requires simultaneous acceptance of the correct regime
-and rejection of incorrect regimes.
-Appropriate error allocation is needed to combine these
-events. Repeated monitoring, data-dependent bandwidths,
-and windows selected after detection also require
-additional justification beyond the fixed-sample
-assumptions used here.
+\proofstep{Step 1: Choose a fixed population direction.}
+Since $D>0$, define
+\[
+u=\frac{A^{-1}\Delta}{\sqrt{2D}}.
+\]
+This direction depends on the population distributions,
+not on the sampled windows. It is only a proof device;
+the classifier does not need to compute it.
+
+Using $2D=\inner{\Delta}{A^{-1}\Delta}$ gives
+\[
+\inner{u}{\Delta}=\sqrt{2D},
+\qquad
+\inner{u}{Au}=1.
+\]
+Since $A\succeq\lambda I$,
+\[
+1=\inner{u}{Au}\ge\lambda\norm{u}^2,
+\qquad
+\norm{u}^2\le\frac1\lambda.
+\]
+
+\proofstep{Step 2: Restrict the empirical variational problem.}
+Define
+\[
+\widehat d=\inner{u}{\widehat\mu_Q-\widehat\mu_i},
+\qquad
+\widehat q=\inner{u}{\widehat A_i u}.
+\]
+Restricting the empirical version of
+\eqref{eq:variational} to $f=tu$, $t\ge0$, gives
+\[
+\widehat D_i
+\ge
+\sup_{t\ge0}
+\left(t\widehat d-\frac{t^2}{2}\widehat q\right).
+\]
+Since $\widehat q>0$, the maximizing value is
+$t=[\widehat d]_+/\widehat q$. Hence
+\begin{equation}
+\widehat D_i\ge\frac{[\widehat d]_+^2}{2\widehat q}.
+\label{eq:directional-variational}
+\end{equation}
+
+\proofstep{Step 3: Concentrate the directional mean.}
+Let
+\[
+h(x)=\inner{u}{\phi(x)}.
+\]
+Using \eqref{eq:feature-bounds},
+\[
+|h(x)-h(y)|
+\le\norm{u}\norm{\phi(x)-\phi(y)}
+\le\sqrt{\frac{2K}{\lambda}}.
+\]
+Thus the range of $h$ has length at most
+$\sqrt{2K/\lambda}$.
+
+Moreover,
+\[
+\widehat d
+=\frac1n\sum_jh(Z_j)-\frac1n\sum_jh(X_j),
+\qquad
+\E\widehat d=\sqrt{2D}.
+\]
+The sum of squared range lengths of the $2n$ independent
+summands is at most
+\[
+2n\left(\frac1n\sqrt{\frac{2K}{\lambda}}\right)^2
+=\frac{4K}{n\lambda}.
+\]
+One-sided Hoeffding concentration gives
+\[
+\Prob\{\widehat d<\sqrt{2D}-t\}
+\le\exp\left(-\frac{n\lambda t^2}{2K}\right).
+\]
+Taking $t=\sqrt2\,s_{\mathrm{dir}}$ yields
+\[
+\widehat d\ge\sqrt{2D}-\sqrt2\,s_{\mathrm{dir}}
+\]
+with probability at least $1-\rho_1/2$.
+
+\proofstep{Step 4: Concentrate the directional quadratic term.}
+We have
+\[
+\widehat q
+=\frac1n\sum_jh(X_j)^2+\lambda\norm{u}^2,
+\qquad
+\E\widehat q=\inner{u}{Au}=1.
+\]
+Also,
+\[
+0\le h(X_j)^2
+\le\norm{u}^2\norm{\phi(X_j)}^2
+\le\frac K\lambda.
+\]
+Hoeffding therefore gives
+\[
+\Prob\{\widehat q>1+t\}
+\le\exp\left(-\frac{2n\lambda^2t^2}{K^2}\right).
+\]
+Taking $t=r_{\mathrm{dir}}$ yields
+\[
+\widehat q\le1+r_{\mathrm{dir}}
+\]
+with probability at least $1-\rho_1/2$.
+
+\proofstep{Step 5: Combine the two scalar bounds.}
+By a union bound, both events hold with probability
+at least $1-\rho_1$. Their independence is not required.
+On their intersection, \eqref{eq:directional-variational}
+gives
+\[
+\begin{aligned}
+\widehat D_i
+&\ge
+\frac{[\sqrt{2D}-\sqrt2\,s_{\mathrm{dir}}]_+^2}
+{2(1+r_{\mathrm{dir}})}\\
+&=
+\frac{[\sqrt D-s_{\mathrm{dir}}]_+^2}
+{1+r_{\mathrm{dir}}}\\
+&\ge
+\frac{[\sqrt\delta-s_{\mathrm{dir}}]_+^2}
+{1+r_{\mathrm{dir}}}.
+\end{aligned}
+\]
+
+\proofstep{Step 6: Normalize.}
+When this bound is positive, $\widehat E_i>0$ and
+Lemma~\ref{lem:upper} gives
+\[
+\widehat S_i
+\ge\frac{\widehat D_i}{M_\lambda}
+\ge L_{\mathrm{dir}}(\delta,\rho_1).
+\]
+When the bound is zero, the claim follows from
+$\widehat S_i\ge0$.
+\end{proof}
+
+\subsection{Threshold condition and comparison}
+
+The null guarantee is unchanged.
+The directional certified interval is
+\[
+\eta_0\le\eta<L_{\mathrm{dir}}(\delta,\rho_1).
+\]
+As in the standard analysis, it is nonempty precisely when
+\begin{equation}
+\boxed{
+\delta>
+\delta_{\mathrm{crit,dir}}
+:=
+\left[
+s_{\mathrm{dir}}
++\sqrt{M_\lambda(1+r_{\mathrm{dir}})\eta_0}
+\right]^2.
+}
+\label{eq:critical-directional}
+\end{equation}
+
+For the same parameters,
+\[
+s_{\mathrm{dir}}
+=
+\sqrt{\frac K{n\lambda}}
+\sqrt{\log\frac2{\rho_1}},
+\]
+whereas
+\[
+s
+=
+\sqrt{\frac{2K}{n\lambda}}
+\left(1+\sqrt{\log\frac3{\rho_1}}\right).
+\]
+Likewise,
+\[
+r_{\mathrm{dir}}
+=
+\frac K{\lambda\sqrt n}
+\sqrt{\frac12\log\frac2{\rho_1}},
+\]
+whereas
+\[
+r
+=
+\frac K{\lambda\sqrt n}
+\left(1+\sqrt{2\log\frac3{\rho_1}}\right).
+\]
+Therefore,
+\[
+s_{\mathrm{dir}}<s,
+\qquad
+r_{\mathrm{dir}}<r.
+\]
+It follows that
+\[
+L_{\mathrm{dir}}(\delta,\rho_1)
+\ge L(\delta,\rho_1),
+\qquad
+\delta_{\mathrm{crit,dir}}
+<
+\delta_{\mathrm{crit}}.
+\]
+The lower-bound inequality is strict whenever
+$L_{\mathrm{dir}}(\delta,\rho_1)>0$.
 
 \end{document}

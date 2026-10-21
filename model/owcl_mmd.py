@@ -1,18 +1,23 @@
 import numpy as np
+from .owcl_pearson import validate_parameters, squared_distances, median_gamma
 
 class OWR_CPD:
-    def __init__(self, n, m, eta, nu, k_conf, gamma=0.1, factor=1.0):
+    def __init__(self, n, m, eta, nu, k_conf, gamma=0.1, factor=1.0, dynamic_gamma=True):
         """
         Open-World Change-Point Detection with Recurrent Regime Recall.
-        Based on MMD detection and RKHS coherence for regime assignment.
-        - Kernel: Dynamic Median Heuristic bandwidth tuning per regime.
+        Biased empirical MMD squared detection and RKHS coherence classification.
+        eta thresholds MMD squared; nu thresholds cosine similarity of the
+        mean embeddings (higher means closer).
+        - Kernel: Optional median-heuristic bandwidth tuning per regime.
         """
+        validate_parameters(n, m, k_conf, gamma, factor)
+        self.dynamic_gamma = dynamic_gamma
         self.n = n              # Reference window size
         self.m = m              # Analysis window size
-        self.eta = eta          # Detection threshold (MMD)
+        self.eta = eta          # Detection threshold (MMD squared)
         self.nu = nu            # Novelty threshold (Coherence)
         self.k_conf = k_conf    # Consecutive windows required to confirm change
-        self.gamma = gamma      # Will be dynamically overwritten by the median heuristic
+        self.gamma = gamma      # Updated by the heuristic only if dynamic_gamma=True
         self.factor = factor    # Scaling factor for gamma adjustment (if needed)
         
         # System State
@@ -35,13 +40,7 @@ class OWR_CPD:
         self.regime_log = []
 
     def _sq_distances(self, X, Y):
-        """Computes the squared Euclidean distance matrix."""
-        X = np.atleast_2d(X)
-        Y = np.atleast_2d(Y)
-        X2 = np.sum(X**2, axis=1).reshape(-1, 1)
-        Y2 = np.sum(Y**2, axis=1).reshape(1, -1)
-        dist_sq = X2 + Y2 - 2 * np.dot(X, Y.T)
-        return np.maximum(dist_sq, 0.0)
+        return squared_distances(X, Y, normalize=False)
 
     def _rbf_kernel(self, X, Y, gamma_override=None):
         """Gaussian RBF kernel matrix computation."""
@@ -54,23 +53,13 @@ class OWR_CPD:
         Computes the squared distances and applies the Median Heuristic
         to dynamically tune the active gamma for the current regime.
         """
-        X_arr = np.array(X_data)
-        dist_sq = self._sq_distances(X_arr, X_arr)
-        
-        # Extract only the unique pairwise distances (upper triangle, ignoring diagonal)
-        triu_indices = np.triu_indices_from(dist_sq, k=1)
-        pairwise_sq_dists = dist_sq[triu_indices]
-        
-        # Apply Median Heuristic
-        median_sq_dist = np.median(pairwise_sq_dists)
-        if median_sq_dist == 0:
-            median_sq_dist = 1e-5 # Prevent division by zero
-            
-        self.gamma = self.factor * (1.0 / (2.0 * median_sq_dist))
+        if self.dynamic_gamma:
+            distances = self._sq_distances(X_data, X_data)
+            self.gamma = median_gamma(distances, self.factor, self.gamma)
         return self.gamma
 
     def _compute_mmd_squared(self, X, Y):
-        """Computes the empirical squared MMD between two windows using the active gamma."""
+        """Computes the biased empirical squared MMD (V-statistic) between two windows using the active gamma."""
         K_XX = np.mean(self._rbf_kernel(X, X))
         K_YY = np.mean(self._rbf_kernel(Y, Y))
         K_XY = np.mean(self._rbf_kernel(X, Y))
@@ -90,7 +79,7 @@ class OWR_CPD:
         
         norm_A = np.sqrt(max(1e-12, K_AA))
         norm_B = np.sqrt(max(1e-12, K_BB))
-        return K_AB / (norm_A * norm_B)
+        return float(np.clip(K_AB / (norm_A * norm_B), 0.0, 1.0))
 
     def update(self, x):
         """Main online streaming process."""

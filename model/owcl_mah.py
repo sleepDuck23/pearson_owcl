@@ -1,12 +1,18 @@
 import numpy as np
+from .owcl_pearson import (validate_parameters, squared_distances,
+                    inverse_gram, slide_inverse, operator_distance, pearson_score)
 from typing import List, Dict, Tuple, Optional, Any
 
 class MahalanobisOWRCPD:
     """
     Open-World Change-Point Detection with PROPER Kernel Mahalanobis Classification.
     
-    - Detection: O(N^2) Recursive Pearson Divergence (Exact NeurIPS empirical operator).
-    - Classification: True Kernel Mahalanobis Distance (Proper Matrix-Centered RKHS).
+    - Detection: Amortized O(n^2 + m^2) recursive Pearson Divergence (regularized RKHS second-moment operator).
+    - Classification: Squared Mahalanobis distance using centered T_i.
+
+    Detection uses uncentered T_i = mean(phi(X) tensor phi(X)).
+    Classification uses centered T_i = mean((phi(X)-mu_i) tensor (phi(X)-mu_i)),
+    regularized by reg_lambda * I. Both operators use normalization 1/n.
     - Kernel: Dynamic Median Absolute Deviation (MAD) bandwidth tuning per regime.
     - Distance: Optional Hypersphere Normalization for scale invariance.
     """
@@ -25,6 +31,7 @@ class MahalanobisOWRCPD:
         normalize_distance: bool = False
     ):
         # Window Parameters
+        validate_parameters(n, m, k_conf, gamma, factor, reg_lambda)
         self.n = n                  # Reference window size
         self.m = m                  # Analysis window size
         
@@ -64,21 +71,11 @@ class MahalanobisOWRCPD:
         self.pearson_div_scores: List[float] = []
         self.regime_log: List[int] = []
 
-    def _sq_distances_v0(self, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
-        """Computes the squared Euclidean distance matrix."""
-        X, Y = np.atleast_2d(X), np.atleast_2d(Y)
-        X_sq = np.sum(X**2, axis=1, keepdims=True)
-        Y_sq = np.sum(Y**2, axis=1, keepdims=True).T
-        dist_sq = X_sq + Y_sq - 2.0 * (X @ Y.T)
-        return np.maximum(dist_sq, 0.0)
+    def _sq_distances_v0(self, X, Y):
+        return squared_distances(X, Y, normalize=False)
 
-    def _sq_distances(self, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
-        """Computes scale-invariant squared Euclidean distance by unit hypersphere projection."""
-        X, Y = np.atleast_2d(X), np.atleast_2d(Y)
-        X_norm = X / np.maximum(np.linalg.norm(X, axis=1, keepdims=True), 1e-12)
-        Y_norm = Y / np.maximum(np.linalg.norm(Y, axis=1, keepdims=True), 1e-12)
-        dist_sq = 2.0 - 2.0 * (X_norm @ Y_norm.T)
-        return np.maximum(dist_sq, 0.0)
+    def _sq_distances(self, X, Y):
+        return squared_distances(X, Y, normalize=True)
 
     def _get_active_distances(self, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
         """Routes to the appropriate distance metric based on the normalization toggle."""
@@ -95,11 +92,10 @@ class MahalanobisOWRCPD:
     def _compute_regime_tensors(self, X_data: List[np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
         """
         1. Applies the MAD Guardrail Heuristic to tune gamma robustly (if enabled).
-        2. Computes uncentered tensors (for O(N^2) active tracking).
+        2. Computes uncentered tensors (for recursive active tracking).
         3. Computes centered tensors (for proper Mahalanobis Classification).
         """
         X_arr = np.array(X_data)
-        n_samples = len(X_arr)
         
         if self.dynamic_gamma:
             # Flatten to 1D for MAD computation
@@ -129,12 +125,13 @@ class MahalanobisOWRCPD:
         K_XX = np.exp(-self.gamma * dist_sq)
         
         # 1. Uncentered W (Used for continuous sliding window Pearson Divergence)
-        W_uncentered = np.linalg.inv(K_XX + self.reg_lambda * np.eye(n_samples))
+        W_uncentered = inverse_gram(K_XX, self.reg_lambda)
         
         # 2. Centered W_c (Used for proper Kernel Mahalanobis Distance)
-        H = np.eye(n_samples) - np.ones((n_samples, n_samples)) / n_samples 
-        K_c = H @ K_XX @ H
-        W_centered = np.linalg.inv(K_c + self.reg_lambda * np.eye(n_samples))
+        # H K_XX H, where H = I - ones((n,n))/n.
+        K_c = (K_XX - K_XX.mean(axis=0)[None, :]
+               - K_XX.mean(axis=1)[:, None] + K_XX.mean())
+        W_centered = inverse_gram(K_c, self.reg_lambda)
         
         # 3. Mean of the reference kernel (mu_X in RKHS)
         mu_K = np.mean(K_XX, axis=1)
@@ -143,8 +140,8 @@ class MahalanobisOWRCPD:
 
     def _compute_kernel_mahalanobis_distance(self, Z: List[np.ndarray], regime_dict: Dict[str, Any]) -> float:
         """
-        Computes the True Kernel Mahalanobis Distance (squared) between 
-        the mean embedding of the new window Z and the historical regime X.
+        Compute <mu_Z-mu_X, (T_i_centered + lambda I)^-1 (mu_Z-mu_X)>.
+        This squared Mahalanobis distance has no Pearson factor of 1/2.
         """
         X_i, W_c = regime_dict['X'], regime_dict['W_c']
         mu_K, gamma_i = regime_dict['mu_K'], regime_dict['gamma']
@@ -153,12 +150,14 @@ class MahalanobisOWRCPD:
         h = np.mean(self._rbf_kernel(X_i, Z, gamma_override=gamma_i), axis=1)
         
         # 2. Exact RKHS Matrix Centering (Projects the difference into the centered space)
-        n_samples = len(X_i)
-        H = np.eye(n_samples) - np.ones((n_samples, n_samples)) / n_samples
-        h_tilde = H @ (h - mu_K)
+        delta = h - mu_K
+        h_tilde = delta - np.mean(delta)
         
         # 3. Compute True Mahalanobis Distance (Mahalanobis norm in centered RKHS)
-        dist_sq = float((W_c @ h_tilde) @ h_tilde)
+        mmd_squared = (np.mean(mu_K)
+                       + np.mean(self._rbf_kernel(Z, Z, gamma_override=gamma_i))
+                       - 2 * np.mean(h))
+        dist_sq = operator_distance(mmd_squared, h_tilde, W_c, self.reg_lambda)
         
         return dist_sq
 
@@ -198,28 +197,15 @@ class MahalanobisOWRCPD:
                 self.active_h = np.mean(self._rbf_kernel(self.X, self.Y), axis=1)
                 self.state = "ACTIVE"
                 
-        # --- PHASE 3: Active Monitoring (Uncentered Pearson - O(N^2)) ---
+        # --- PHASE 3: Active Monitoring (Uncentered Pearson) ---
         elif self.state == "ACTIVE":
             x_t, x_t_m = x, self.Y[0]
             
-            # 1. Downdate W
-            w11, w12 = self.active_W[0, 0], self.active_W[0, 1:]
-            w21, W22 = self.active_W[1:, 0], self.active_W[1:, 1:]
-            W_reduced = W22 - np.outer(w21, w12) / w11
-            
-            # 2. Update W 
-            X_reduced = self.X[1:]  
+            # W = (K_XX + n * lambda I)^-1, with fixed gamma.
+            self.active_W = slide_inverse(self, x_t_m)
+            X_reduced = self.X[1:]
             k_in = self._rbf_kernel(X_reduced, x_t_m).flatten()
-            
-            v = W_reduced @ k_in
-            schur_scalar = max(1e-12, (1.0 + self.reg_lambda) - (k_in @ v))
-            beta = 1.0 / schur_scalar
-            
-            self.active_W = np.block([
-                [W_reduced + beta * np.outer(v, v), -beta * v[:, None]],
-                [-beta * v[None, :],                np.array([[beta]])]
-            ])
-            
+
             # 3. Update h vector
             h_reduced = self.active_h[1:].copy() 
             k_in_xt = self._rbf_kernel(X_reduced, x_t).flatten()
@@ -235,13 +221,14 @@ class MahalanobisOWRCPD:
             self.X.append(x_t_m)
             self.regime_log.append(self.active_regime_id)
             
-            # 4. Evaluate Divergence Score (Exact NeurIPS Pearson Chi^2)
+            # 4. Evaluate Divergence Score (regularized RKHS Pearson-type discrepancy)
             # Recompute active_mu_K for the shifted reference window 
-            # (Strictly O(N^2) complexity, preserves absolute numerical stability)
+            # Reference Gram evaluation costs O(n^2) kernel evaluations.
             self.active_mu_K = np.mean(self._rbf_kernel(self.X, self.X), axis=1)
             
-            delta = self.active_h - self.active_mu_K
-            score = 0.5 * float((self.active_W @ delta) @ delta)
+            score = pearson_score(
+                self, self.Y, self.X, self.active_W, self.active_mu_K,
+                self.gamma, h=self.active_h)
             
             self.consec = self.consec + 1 if score > self.tau else 0
                 

@@ -1,6 +1,6 @@
 # Fdb version 4
-["pdflatex"] 1792512600.29818 "/Users/bamorim/Documents/GitHub/pearson_x2/proofs/energy_bound.tex" "energy_bound.pdf" "energy_bound" 1792512600.72354 0
-  "/Users/bamorim/Documents/GitHub/pearson_x2/proofs/energy_bound.tex" 1792512593.95278 12620 616cefd46877cdf7ac0346170e06d510 ""
+["pdflatex"] 1792589139.17393 "/Users/bamorim/Documents/GitHub/pearson_x2/proofs/energy_bound.tex" "energy_bound.pdf" "energy_bound" 1792589139.63219 0
+  "/Users/bamorim/Documents/GitHub/pearson_x2/proofs/energy_bound.tex" 1792589138.46935 23229 6f74f64deeaf025094656c0319816de9 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/map/fontname/texfonts.map" 1577235249 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/amsfonts/cmextra/cmex7.tfm" 1246382020 1004 54797486969f23fa377b128694d548df ""
   "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/amsfonts/cmextra/cmex8.tfm" 1246382020 988 bdf658c3bfc2d96d3c8b02cfc1c94c20 ""
@@ -32,8 +32,10 @@
   "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb" 1248133631 35469 70d41d2b9ea31d5d813066df7c99281c ""
   "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb" 1248133631 35752 024fb6c41858982481f6968b5fc26508 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb" 1248133631 32362 179c33bbf43f19adbb3825bb4e36e57a ""
+  "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr6.pfb" 1248133631 32734 69e00a6b65cedb993666e42eedb3d48f ""
   "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb" 1248133631 32726 0a1aea6fcd6468ee2cf64d891f5c43c8 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb" 1248133631 32569 5e5ddc8df908dea60932f3c484a54c0d ""
+  "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy6.pfb" 1248133631 32587 1788b0c1c5b39540c96f5e42ccd6dae8 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb" 1248133631 32626 4f5c1b83753b1dd3a97d1b399a005b4b ""
   "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb" 1248133631 37944 359e864bd06cde3b1cf57bb20757fb06 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb" 1248133631 34694 ad62b13721ee8eda1dcc8993c8bd7041 ""
@@ -98,9 +100,9 @@
   "/usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1792409864 5573038 b99aad5e4898a9034e953632f940512b ""
   "/usr/local/texlive/2026/texmf-var/web2c/pdftex/pdflatex.fmt" 1792409769 3636772 dcbfa7a2940ce9866373a99859d26809 ""
   "/usr/local/texlive/2026/texmf.cnf" 1774209515 577 648cd9f92f9c0eac486f4c71c85cfbbe ""
-  "energy_bound.aux" 1792512600.68361 2965 732c6ac1f99c8ea5e615a4438e16ddb8 "pdflatex"
-  "energy_bound.out" 1792512600.68426 1451 b475ea107f982be315bd6a35bfd0f671 "pdflatex"
-  "energy_bound.tex" 1792512593.95278 12620 616cefd46877cdf7ac0346170e06d510 ""
+  "energy_bound.aux" 1792589139.58776 3928 b05fd6c7bc2a204a2fed90c7ebdd6d32 "pdflatex"
+  "energy_bound.out" 1792589139.58842 2481 b762561753e71cb5df84aecd2ad95e10 "pdflatex"
+  "energy_bound.tex" 1792589138.46935 23229 6f74f64deeaf025094656c0319816de9 ""
   (generated)
   "energy_bound.aux"
   "energy_bound.log"
