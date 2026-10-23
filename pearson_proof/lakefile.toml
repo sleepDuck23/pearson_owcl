@@ -1,0 +1,24 @@
+name = "pearson_proof"
+version = "0.1.0"
+keywords = ["math"]
+defaultTargets = ["PearsonProof", "BoundsExtended"]
+
+[leanOptions]
+warningAsError = true
+pp.unicode.fun = true # pretty-prints `fun a ↦ b`
+relaxedAutoImplicit = false
+weak.linter.mathlibStandardSet = true
+maxSynthPendingDepth = 3
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+rev = "v4.35.0"
+
+[[lean_lib]]
+name = "PearsonProof"
+
+[[lean_lib]]
+name = "BoundsExtended"
+srcDir = "../proofs/lean"
+roots = ["BoundsExtended", "BoundsExtendedCore", "BoundsExtendedOperators", "BoundsExtendedMoments", "BoundsExtendedTensor", "BoundsExtendedProbability", "BoundsExtendedCalibration", "BoundsExtendedMcDiarmid", "BoundsExtendedSampling", "BoundsExtendedStatistical", "BoundsExtendedSamplingModel", "BoundsExtendedFoundations", "BoundsExtendedMeasurability", "BoundsExtendedGuarantees", "BoundsExtendedRates", "BoundsExtendedExamples", "BoundsExtendedVariance", "BoundsExtendedAppendices", "BoundsExtendedTails", "BoundsExtendedAudit"]
