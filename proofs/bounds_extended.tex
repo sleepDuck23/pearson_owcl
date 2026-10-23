@@ -229,7 +229,7 @@ For one replacement,
 There are $n$ sensitivities $\sqrt2K/n$, so their squared sum is
 $2K^2/n$. McDiarmid gives
 \begin{equation}\label{eq:op-tail}
- \Prob\{G-\E G\ge t\}\le\exp(-nt^2/K^2).
+ \Prob\{G-\E G\ge t\}\le\exp(-nt^2/K^2),\qquad t>0.
 \end{equation}
 Set $t=K\sqrt{\log(1/\gamma)/n}$ and use
 $\norm{B}_{\op}\le\norm{B}_{\HS}$.
@@ -467,8 +467,8 @@ strictly smaller than $\delta$.
 \end{proof}
 
 \subsection{One static threshold for a fixed memory bank}\label{sec:bank}
-Let $P_1,\ldots,P_M$ be distinct fixed reference regimes and
-$\mathcal Q$ an admissible family of incoming distributions.
+Let $M\ge1$, let $P_1,\ldots,P_M$ be distinct fixed reference regimes, and let
+$\mathcal Q$ be an admissible family of incoming distributions.
 Use the same $n,K,\lambda$ for all comparisons. Assume a uniform
 non-merging margin $\delta_*>0$ such that
 \begin{equation}\label{eq:bank-separation}
@@ -641,7 +641,7 @@ operator norms and order for the regularized operators instead.
 
 Let $Z_1,\ldots,Z_N$ be independent, and let $f$ be a measurable
 real function such that changing coordinate $j$ changes $f$ by at
-most a deterministic $c_j$. Then
+most a deterministic $c_j$. Then, for $t>0$ and $\sum_j c_j^2>0$,
 \begin{equation}\label{eq:mcdiarmid}
  \Prob\{f-\E f\ge t\}
  \le\exp\left(-\frac{2t^2}{\sum_{j=1}^Nc_j^2}\right).
