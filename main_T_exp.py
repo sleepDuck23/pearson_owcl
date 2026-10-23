@@ -72,7 +72,7 @@ def main():
     # ==========================================
     # EXPERIMENT SETUP (Choose T1, T2, or T3)
     # ==========================================
-    TIER = "T2"  
+    TIER = "T1"  
     
     # Experiment parameters defined by the paper Table 1
     configs = {
@@ -95,7 +95,7 @@ def main():
     
     # Initialize Models
     mmd_model = OWR_CPD(
-        n=n, m=m, eta=0.04, nu=configs[TIER]["mmd_nu"], 
+        n=n, m=m, eta=0.2, nu=configs[TIER]["mmd_nu"], 
         k_conf=k_conf, gamma=gamma,
         dynamic_gamma=dynamic_gamma
     )
@@ -117,8 +117,8 @@ def main():
     )
 
     mahalanobis_model = MahalanobisOWRCPD(
-        n=n, m=m, tau=0.1, nu=0.08, 
-        k_conf=k_conf, reg_lambda=1e-5, gamma=gamma,
+        n=n, m=m, tau=0.65, nu=0.08, 
+        k_conf=k_conf, reg_lambda=1e-1, gamma=gamma,
         factor = 1.0,
         dynamic_gamma=dynamic_gamma,
         normalize_distance=False

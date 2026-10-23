@@ -1,5 +1,37 @@
 import numpy as np
-from .owcl_pearson import validate_parameters, squared_distances, median_gamma
+
+def validate_parameters(n, m, k_conf, gamma, factor, reg_lambda=None):
+    for name, value in (("n", n), ("m", m), ("k_conf", k_conf)):
+        if not isinstance(value, (int, np.integer)) or value < 1:
+            raise ValueError(f"{name} must be a positive integer")
+    for name, value in (("gamma", gamma), ("factor", factor),
+                        ("reg_lambda", reg_lambda)):
+        if value is not None and (not np.isfinite(value) or value <= 0):
+            raise ValueError(f"{name} must be finite and positive")
+
+
+def squared_distances(X, Y, normalize=False):
+    """Rows are observations; a 1D array represents one observation."""
+    X, Y = np.asarray(X, dtype=float), np.asarray(Y, dtype=float)
+    nx = 0 if X.size == 0 else np.atleast_2d(X).shape[0]
+    ny = 0 if Y.size == 0 else np.atleast_2d(Y).shape[0]
+    if not nx or not ny:
+        return np.empty((nx, ny))
+    X, Y = np.atleast_2d(X), np.atleast_2d(Y)
+    if normalize:
+        X = X / np.maximum(np.linalg.norm(X, axis=1, keepdims=True), 1e-12)
+        Y = Y / np.maximum(np.linalg.norm(Y, axis=1, keepdims=True), 1e-12)
+    # Actual norms also handle zero vectors, whose normalized norm is not one.
+    return np.maximum(np.sum(X * X, axis=1)[:, None]
+                      + np.sum(Y * Y, axis=1)[None, :] - 2 * np.dot(X, Y.T), 0.0)
+
+
+def median_gamma(distances, factor, fallback):
+    pairs = distances[np.triu_indices_from(distances, k=1)]
+    if not pairs.size:
+        return float(fallback)
+    return float(factor / (2 * max(float(np.median(pairs)), 1e-5)))
+
 
 class OWR_CPD:
     def __init__(self, n, m, eta, nu, k_conf, gamma=0.1, factor=1.0, dynamic_gamma=True):

@@ -1,0 +1,47 @@
+\contentsline {paragraph}{Reading guide.}{1}{section*.1}%
+\contentsline {section}{\numberline {1}Setting, assumptions, and interpretation}{3}{section.1}%
+\contentsline {subsection}{\numberline {1.1}Mean embeddings and second moments}{3}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}Population and empirical scores}{3}{subsection.1.2}%
+\contentsline {section}{\numberline {2}Concentration of the empirical moments}{4}{section.2}%
+\contentsline {section}{\numberline {3}Coupling and deterministic stability}{6}{section.3}%
+\contentsline {subsection}{\numberline {3.1}The dependence that is present}{6}{subsection.3.1}%
+\contentsline {paragraph}{Validity and usefulness are different.}{7}{section*.3}%
+\contentsline {section}{\numberline {4}Null upper bound and alternative lower bound}{7}{section.4}%
+\contentsline {section}{\numberline {5}Threshold calibration and interpretation}{7}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Common tolerance and the original explicit formula}{8}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Sample size and regularization}{8}{subsection.5.2}%
+\contentsline {section}{\numberline {6}Extensions and operational scope}{9}{section.6}%
+\contentsline {subsection}{\numberline {6.1}Unequal window sizes}{9}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}A window containing pre-change and post-change observations}{9}{subsection.6.2}%
+\contentsline {subsection}{\numberline {6.3}A fixed finite reference bank}{9}{subsection.6.3}%
+\contentsline {subsection}{\numberline {6.4}Repeated testing and stored references}{10}{subsection.6.4}%
+\contentsline {section}{\numberline {7}Comparison with the supplied ICLR 2027 manuscript}{10}{section.7}%
+\contentsline {subsection}{\numberline {7.1}An important difference in assumptions}{10}{subsection.7.1}%
+\contentsline {subsection}{\numberline {7.2}Where the variance constants come from}{10}{subsection.7.2}%
+\contentsline {subsection}{\numberline {7.3}McDiarmid and the paper's Bernstein calculation}{10}{subsection.7.3}%
+\contentsline {subsection}{\numberline {7.4}Operator concentration and inverse control}{11}{subsection.7.4}%
+\contentsline {subsection}{\numberline {7.5}What the comparison establishes}{12}{subsection.7.5}%
+\contentsline {section}{\numberline {A}RKHS and expectation foundations}{12}{appendix.A}%
+\contentsline {subsection}{\numberline {A.1}The reproducing property}{12}{subsection.A.1}%
+\contentsline {subsection}{\numberline {A.2}Boundedness and positivity of the second moment}{12}{subsection.A.2}%
+\contentsline {subsection}{\numberline {A.3}Why the score can be zero for distinct distributions}{12}{subsection.A.3}%
+\contentsline {section}{\numberline {B}Centering, variance, and independence}{12}{appendix.B}%
+\contentsline {subsection}{\numberline {B.1}The Hilbert-space variance identity}{12}{subsection.B.1}%
+\contentsline {subsection}{\numberline {B.2}Independent empirical averages}{13}{subsection.B.2}%
+\contentsline {subsection}{\numberline {B.3}An example separating a pointwise bound from an expectation}{13}{subsection.B.3}%
+\contentsline {subsection}{\numberline {B.4}What dependence would change}{13}{subsection.B.4}%
+\contentsline {section}{\numberline {C}Rank-one operators and Hilbert--Schmidt norms}{13}{appendix.C}%
+\contentsline {section}{\numberline {D}McDiarmid's inequality and constant bookkeeping}{14}{appendix.D}%
+\contentsline {section}{\numberline {E}Hilbert-space Bernstein and threshold inversion}{14}{appendix.E}%
+\contentsline {subsection}{\numberline {E.1}Solving for the confidence radius}{14}{subsection.E.1}%
+\contentsline {subsection}{\numberline {E.2}A further improvement for nonnegative kernels}{15}{subsection.E.2}%
+\contentsline {section}{\numberline {F}Operator order, noncommutativity, and inverse identities}{15}{appendix.F}%
+\contentsline {subsection}{\numberline {F.1}Order and inversion}{15}{subsection.F.1}%
+\contentsline {subsection}{\numberline {F.2}The resolvent identity needs no Neumann series}{15}{subsection.F.2}%
+\contentsline {subsection}{\numberline {F.3}What a Neumann expansion adds}{15}{subsection.F.3}%
+\contentsline {subsection}{\numberline {F.4}An additional direct score-error bound}{16}{subsection.F.4}%
+\contentsline {section}{\numberline {G}Separation, identifiability, and sufficient conditions}{16}{appendix.G}%
+\contentsline {section}{\numberline {H}Unconditional and reference-conditional guarantees}{16}{appendix.H}%
+\contentsline {subsection}{\numberline {H.1}An explicit example where the estimators are coupled}{17}{subsection.H.1}%
+\contentsline {section}{\numberline {I}Audit record and notation crosswalk}{17}{appendix.I}%
+\contentsline {paragraph}{Status of the original results.}{17}{section*.4}%

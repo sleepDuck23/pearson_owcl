@@ -1,5 +1,5 @@
 import numpy as np
-from .owcl_pearson import (validate_parameters, squared_distances,
+from .owcl_pearson import (validate_parameters, squared_distances, median_gamma,
                     inverse_gram, slide_inverse, operator_distance, pearson_score)
 from typing import List, Dict, Tuple, Optional, Any
 
@@ -13,7 +13,7 @@ class MahalanobisOWRCPD:
     Detection uses uncentered T_i = mean(phi(X) tensor phi(X)).
     Classification uses centered T_i = mean((phi(X)-mu_i) tensor (phi(X)-mu_i)),
     regularized by reg_lambda * I. Both operators use normalization 1/n.
-    - Kernel: Dynamic Median Absolute Deviation (MAD) bandwidth tuning per regime.
+    - Kernel: Optional median pairwise squared-distance bandwidth tuning per regime.
     - Distance: Optional Hypersphere Normalization for scale invariance.
     """
     
@@ -43,7 +43,7 @@ class MahalanobisOWRCPD:
         # Kernel Parameters
         self.reg_lambda = reg_lambda 
         self.gamma = gamma          # Initial/Static gamma
-        self.factor = factor        # Scaling factor for the MAD heuristic
+        self.factor = factor        # Scaling factor for the median-distance heuristic
         self.dynamic_gamma = dynamic_gamma
         self.normalize_distance = normalize_distance
         
@@ -91,36 +91,19 @@ class MahalanobisOWRCPD:
 
     def _compute_regime_tensors(self, X_data: List[np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
         """
-        1. Applies the MAD Guardrail Heuristic to tune gamma robustly (if enabled).
-        2. Computes uncentered tensors (for recursive active tracking).
-        3. Computes centered tensors (for proper Mahalanobis Classification).
+        1. Compute squared distances with the selected distance metric.
+        2. Apply the same median bandwidth heuristic as Pearson/MMD, if enabled.
+        3. Build uncentered detection and centered classification inverses.
+
+        Gamma stays fixed during active sliding-window monitoring and is
+        refreshed when a regime reference is initialized or replaced.
         """
         X_arr = np.array(X_data)
-        
-        if self.dynamic_gamma:
-            # Flatten to 1D for MAD computation
-            X_flat = X_arr.flatten()
-            
-            # 1. Compute spread using MAD (robust to zero-centering and outliers)
-            median_val = np.median(X_flat)
-            mad = np.median(np.abs(X_flat - median_val))
-            
-            # 2. Prevent division by zero if window is completely flat
-            if mad < 1e-4:
-                mad = 1.0
-                
-            # 3. Convert MAD to standard deviation scale (1.4826 normal consistency factor)
-            sigma_scale = mad * 1.4826 
-            
-            # 4. Set Gamma (Bandwidth) based on physical spread
-            raw_gamma = self.factor / (2.0 * (sigma_scale ** 2))
-            
-            # 5. Safety Clip to prevent matrix singularity or explosion
-            self.gamma = np.clip(raw_gamma, 1e-3, 50.0)
-            
-        # Calculate Squared Distances (for the kernel matrix)
         dist_sq = self._get_active_distances(X_arr, X_arr)
-        
+
+        if self.dynamic_gamma:
+            self.gamma = median_gamma(dist_sq, self.factor, self.gamma)
+
         # Compute K_XX using the active gamma
         K_XX = np.exp(-self.gamma * dist_sq)
         

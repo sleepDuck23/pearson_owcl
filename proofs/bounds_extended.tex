@@ -1,0 +1,811 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{booktabs}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+\hypersetup{pdftitle={Pearson Bounds for Open-World Continual Classification}}
+\setlength{\emergencystretch}{2em}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{assumption}[theorem]{Assumption}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newcommand{\HH}{\mathcal H_k}
+\newcommand{\E}{\mathbb E}
+\newcommand{\Prob}{\mathbb P}
+\newcommand{\norm}[1]{\left\lVert#1\right\rVert}
+\newcommand{\inner}[2]{\left\langle#1,#2\right\rangle}
+\newcommand{\op}{\mathrm{op}}
+\newcommand{\HS}{\mathrm{HS}}
+\newcommand{\D}{D_\lambda(Q;P)}
+\newcommand{\Dh}{\widehat D_\lambda}
+\newcommand{\pos}[1]{\left[#1\right]_+}
+\DeclareMathOperator{\tr}{tr}
+
+\title{Pearson Bounds for\\Open-World Continual Classification}
+\author{}
+\date{}
+\begin{document}
+\maketitle
+
+\section{Classification model and regularized Pearson score}\label{sec:setup}
+Let $P_1,\ldots,P_M$ denote the distributions of the regimes represented
+in a fixed memory bank. An incoming batch has distribution $Q$.
+For each reference $P_i$, a directed empirical Pearson-type score
+is used to decide whether to associate the batch with that regime.
+A small score supports association; a large score supports keeping
+the incoming regime separate. An incoming regime separated from every
+stored reference should remain unknown rather than be merged with an
+existing regime.
+
+We first analyze one fixed reference $P=P_i$. All pairwise results use
+this notation; Section~\ref{sec:bank} gives their consequence for a fixed
+finite bank and one common threshold.
+
+\begin{assumption}[Kernel and sampling]\label{ass:setup}
+Let $\HH$ be a real, separable reproducing kernel Hilbert space on a
+measurable space $\mathcal X$, with measurable feature map
+$\phi(x)=k(\cdot,x)$. The kernel is positive semidefinite and satisfies
+\begin{equation}\label{eq:kernel}
+ k(x,y)\ge0,\qquad \sup_x k(x,x)\le K,\qquad 0<K<\infty.
+\end{equation}
+Fix distributions $P,Q$, a positive integer $n$, and $\lambda>0$.
+The reference observations $X_1,\ldots,X_n$ are i.i.d. from $P$;
+the incoming observations $Y_1,\ldots,Y_n$ are i.i.d. from $Q$;
+and all $2n$ observations are mutually independent. The regime
+distributions are fixed. The kernel and regularization are specified
+independently of the batches used to evaluate the scores.
+\end{assumption}
+
+The normalized Gaussian kernel satisfies~\eqref{eq:kernel} with $K=1$.
+Pointwise nonnegativity is a separate requirement from positive
+semidefiniteness. Probabilities below integrate over the reference and
+incoming batches jointly; they are not conditional guarantees for every
+possible realized memory sample. All logarithms are natural.
+
+\subsection{Population and empirical moments}
+For a distribution $R$, define
+\begin{align}
+ \mu_R&=\E_{Z\sim R}\phi(Z),&
+ T_R&=\E_{Z\sim R}[\phi(Z)\otimes\phi(Z)],\label{eq:pop-moments}\\
+ \widehat\mu_P&=\frac1n\sum_{r=1}^n\phi(X_r),&
+ \widehat\mu_Q&=\frac1n\sum_{r=1}^n\phi(Y_r),\label{eq:emp-means}\\
+ \widehat T_P&=\frac1n\sum_{r=1}^n\phi(X_r)\otimes\phi(X_r),&
+ \Delta&=\mu_Q-\mu_P,\quad
+ \widehat\Delta=\widehat\mu_Q-\widehat\mu_P.\label{eq:emp-moments}
+\end{align}
+Here $(u\otimes v)w=\inner{v}{w}_{\HH}u$.
+The operator $T_P$ is an uncentered second moment; subtracting
+$\mu_P\otimes\mu_P$ would define a different score.
+The bounded measurable feature map ensures that these expectations
+exist, as developed in Appendix~\ref{app:foundations}.
+Write
+\begin{equation}\label{eq:A}
+ A=T_P+\lambda I,\qquad \widehat A=\widehat T_P+\lambda I.
+\end{equation}
+For every $f\in\HH$,
+\begin{equation}\label{eq:quadratic}
+ 0\le\inner{f}{T_Pf}=\E_P f(X)^2\le K\norm{f}_{\HH}^2.
+\end{equation}
+Consequently $0\preceq T_P,\widehat T_P\preceq KI$ and
+$A,\widehat A\succeq\lambda I$; both regularized operators have
+bounded inverses.
+
+\subsection{Score and association rule}
+Define the population and empirical regularized Pearson-type scores
+\begin{align}
+ \D&=\frac12\inner{\Delta}{A^{-1}\Delta}_{\HH},\label{eq:D}\\
+ \Dh&=\frac12\inner{\widehat\Delta}
+                    {\widehat A^{-1}\widehat\Delta}_{\HH}.\label{eq:Dhat}
+\end{align}
+The semicolon indicates that $P$ supplies the second-moment operator.
+The score is directed: interchanging $P$ and $Q$ generally changes it.
+For a positive operator $B$ with bounded inverse, write
+$\norm{v}_B^2=\inner{v}{Bv}_{\HH}$.
+Appendix~\ref{app:variational} derives this regularized RKHS score
+from its variational definition.
+
+For a static threshold $\eta\ge0$, the pairwise decision is
+\begin{equation}\label{eq:decision}
+ \text{associate with }P\text{ if }\Dh\le\eta;
+ \qquad\text{keep separate from }P\text{ if }\Dh>\eta.
+\end{equation}
+Static means that the threshold is specified independently of the
+realized scores. It may depend on $n,K,\lambda$, confidence levels,
+and an assumed population separation.
+The two scenarios are
+\begin{align}
+ H_0:&\quad Q=P,\label{eq:H0}\\
+ H_1(\delta):&\quad \D\ge\delta>0.\label{eq:H1}
+\end{align}
+The second scenario formalizes a non-merging regime relative to the
+reference. Distinct distributions alone do not provide a specified
+positive uniform margin; Appendix~\ref{app:separation} explains the
+role of this assumption.
+
+\section{Concentration of the empirical moments}\label{sec:concentration}
+
+For $\gamma\in(0,1)$ define
+\begin{equation}\label{eq:radii}
+ b_n(\gamma)=\sqrt{\frac{2K}{n}}
+        \left(1+\sqrt{\log\frac1\gamma}\right),\qquad
+ e_n(\gamma)=\frac K{\sqrt n}
+        \left(1+\sqrt{\log\frac1\gamma}\right).
+\end{equation}
+These deterministic confidence radii are obtained using McDiarmid's
+inequality. The first concerns mean embeddings, the second an operator.
+
+\begin{lemma}[Mean-difference concentration]\label{lem:mean}
+Under Assumption~\ref{ass:setup},
+\begin{equation}\label{eq:mean-event}
+ \Prob\{\norm{\widehat\Delta-\Delta}_{\HH}
+             \le b_n(\gamma)\}\ge1-\gamma.
+\end{equation}
+\end{lemma}
+\begin{proof}
+Set $U_r=\phi(Y_r)-\mu_Q$ and $V_r=\phi(X_r)-\mu_P$.
+They are mutually independent and centered. ``Centered'' is an identity:
+$\E[\phi(X)-\mu_P]=0$. It does not assume that $\mu_P=0$.
+For a single distribution $R$, expansion of the squared norm gives
+\begin{equation}\label{eq:feature-variance}
+ \E_R\norm{\phi(Z)-\mu_R}_{\HH}^2
+ =\E_R k(Z,Z)-\norm{\mu_R}_{\HH}^2\le K.
+\end{equation}
+Independence removes cross terms between distinct centered observations,
+so
+\begin{align}
+ \E\norm{\widehat\Delta-\Delta}_{\HH}^2
+ &=\frac1n\left(\E_Q k(Y,Y)-\norm{\mu_Q}_{\HH}^2\right)
+  +\frac1n\left(\E_P k(X,X)-\norm{\mu_P}_{\HH}^2\right)\notag\\
+ &\le\frac{2K}{n}.\label{eq:delta-second-moment}
+\end{align}
+Thus, for $F=\norm{\widehat\Delta-\Delta}_{\HH}$,
+$\E F\le\sqrt{\E F^2}\le\sqrt{2K/n}$.
+
+Replacing one observation $X_r$ by $X_r'$ changes $\widehat\Delta$ by
+$-(\phi(X_r)-\phi(X_r'))/n$. The population $\Delta$ stays fixed.
+The reverse triangle inequality therefore gives
+\begin{align}
+ |F-F'|&\le\frac1n\norm{\phi(X_r)-\phi(X_r')}_{\HH},\notag\\
+ \norm{\phi(x)-\phi(y)}_{\HH}^2
+ &=k(x,x)+k(y,y)-2k(x,y)\le2K.\label{eq:feature-diameter}
+\end{align}
+The same bound holds when replacing a $Y_r$. There are $2n$ observations,
+each with sensitivity $\sqrt{2K}/n$, and hence
+$\sum_{j=1}^{2n}c_j^2=4K/n$.
+McDiarmid's inequality (Appendix~\ref{app:mcdiarmid}) yields
+\begin{equation}\label{eq:mean-tail}
+ \Prob\{F-\E F\ge t\}
+ \le\exp\left(-\frac{nt^2}{2K}\right),\qquad t>0.
+\end{equation}
+Taking $t=\sqrt{(2K/n)\log(1/\gamma)}$ proves the claim.
+\end{proof}
+
+\begin{remark}[Expected error versus an individual deviation]
+Equation~\eqref{eq:feature-variance} bounds an expectation. It does not
+assert $\norm{\phi(X)-\mu_P}^2\le K$ for every $X$.
+The coarser bound $\norm{\phi(X)-\mu_P}\le2\sqrt K$ is valid pointwise
+and can be used to control individual summands. These two statements
+serve different purposes and are compatible.
+\end{remark}
+
+\begin{lemma}[Operator concentration]\label{lem:operator}
+Under Assumption~\ref{ass:setup},
+\begin{equation}\label{eq:op-event}
+ \Prob\{\norm{\widehat T_P-T_P}_{\op}
+            \le e_n(\gamma)\}\ge1-\gamma.
+\end{equation}
+\end{lemma}
+\begin{proof}
+The Hilbert--Schmidt operators form a Hilbert space.
+For $V(z)=\phi(z)\otimes\phi(z)$, the rank-one identities proved in
+Appendix~\ref{app:rankone} give
+\begin{equation}\label{eq:Vnorm}
+ \norm{V(z)}_{\HS}=k(z,z)\le K,\qquad
+ \inner{V(x)}{V(y)}_{\HS}=k(x,y)^2.
+\end{equation}
+Apply the Hilbert-space variance identity to their empirical mean:
+\begin{equation}\label{eq:operator-variance}
+ \E\norm{\widehat T_P-T_P}_{\HS}^2
+ =\frac{\E_P k(X,X)^2-\norm{T_P}_{\HS}^2}{n}
+ \le\frac{K^2}{n}.
+\end{equation}
+Thus $G=\norm{\widehat T_P-T_P}_{\HS}$ satisfies $\E G\le K/\sqrt n$.
+For one replacement,
+\begin{align}
+ |G-G'|&\le\frac1n\norm{V(x)-V(x')}_{\HS},\notag\\
+ \norm{V(x)-V(y)}_{\HS}^2
+ &=k(x,x)^2+k(y,y)^2-2k(x,y)^2\le2K^2.
+ \label{eq:Vdiameter}
+\end{align}
+There are $n$ sensitivities $\sqrt2K/n$, so their squared sum is
+$2K^2/n$. McDiarmid gives
+\begin{equation}\label{eq:op-tail}
+ \Prob\{G-\E G\ge t\}\le\exp(-nt^2/K^2).
+\end{equation}
+Set $t=K\sqrt{\log(1/\gamma)/n}$ and use
+$\norm{B}_{\op}\le\norm{B}_{\HS}$.
+\end{proof}
+
+\section{Null hypothesis: association with the same regime}\label{sec:null}
+\begin{theorem}[Null upper bound]\label{thm:null}
+Under Assumption~\ref{ass:setup}, if $Q=P$, then for every
+$\alpha_0\in(0,1)$,
+\begin{equation}\label{eq:null}
+ \Prob\{0\le\Dh\le U_n(\alpha_0)\}\ge1-\alpha_0,
+\end{equation}
+where
+\begin{equation}\label{eq:U}
+ \boxed{U_n(\alpha_0)=\frac{b_n(\alpha_0)^2}{2\lambda}
+ =\frac{K}{n\lambda}
+       \left(1+\sqrt{\log\frac1{\alpha_0}}\right)^2.}
+\end{equation}
+Any static threshold $\eta\ge U_n(\alpha_0)$ therefore satisfies
+\begin{equation}\label{eq:false-separation}
+ \Prob_{Q=P}\{\Dh>\eta\}\le\alpha_0.
+\end{equation}
+\end{theorem}
+\begin{proof}
+For every realization, $\widehat A\succeq\lambda I$ implies
+$0\preceq\widehat A^{-1}\preceq\lambda^{-1}I$. Hence
+\begin{equation}\label{eq:null-domination}
+ 0\le\Dh\le\frac1{2\lambda}\norm{\widehat\Delta}_{\HH}^2.
+\end{equation}
+Under $Q=P$ the population mean difference is $\Delta=0$.
+Lemma~\ref{lem:mean}, applied at level $\alpha_0$, then gives the
+upper bound with probability at least $1-\alpha_0$.
+The event $\{\Dh>\eta\}$ is contained in $\{\Dh>U_n(\alpha_0)\}$
+when $\eta\ge U_n(\alpha_0)$, proving the error statement.
+\end{proof}
+The error in~\eqref{eq:false-separation} is failure to associate the
+incoming batch with its own regime. No operator concentration is
+needed under the null. The operator inequality is pointwise, so the
+dependence between $\widehat A$ and $\widehat\Delta$ is allowed.
+
+\section{Non-merging regimes: separation from a reference}\label{sec:alternative}
+\begin{assumption}[Population separation]\label{ass:separation}
+For the fixed ordered pair and fixed regularization, $\D\ge\delta>0$.
+\end{assumption}
+
+Both $\widehat T_P$ and $\widehat\Delta$ contain the reference data,
+so they are generally dependent. For their joint use, put
+$b=b_n(\alpha_1/2)$ and $e=e_n(\alpha_1/2)$ and define
+\begin{equation}\label{eq:joint-event}
+ \mathcal E_{b,e}=
+ \{\norm{\widehat\Delta-\Delta}_{\HH}\le b,
+   \ \norm{\widehat T_P-T_P}_{\op}\le e\}.
+\end{equation}
+The two concentration lemmas and a union bound give
+\begin{equation}\label{eq:joint-probability}
+ \Prob(\mathcal E_{b,e})\ge1-\alpha_1.
+\end{equation}
+Independence between these two error events is not required.
+
+\begin{lemma}[Inverse-operator comparison]\label{lem:inverse}
+If $\norm{\widehat T_P-T_P}_{\op}\le e$ and $c=1+e/\lambda$, then
+\begin{equation}\label{eq:inverse-order}
+ \widehat A^{-1}\succeq c^{-1}A^{-1}.
+\end{equation}
+\end{lemma}
+\begin{proof}
+Self-adjointness implies $\widehat T_P-T_P\preceq eI$.
+Since $A\succeq\lambda I$,
+\[
+ \widehat A\preceq A+eI\preceq(1+e/\lambda)A=cA.
+\]
+Inversion reverses the order of positive operators with bounded
+inverses, proving the claim. Appendix~\ref{app:order} justifies this
+step without assuming commutativity.
+\end{proof}
+
+\begin{theorem}[Non-merging lower bound]\label{thm:alternative}
+Under Assumptions~\ref{ass:setup} and~\ref{ass:separation}, for every
+$\alpha_1\in(0,1)$,
+\begin{equation}\label{eq:alternative}
+ \Prob\{\Dh\ge L_n(\delta,\alpha_1)\}\ge1-\alpha_1,
+\end{equation}
+where
+\begin{equation}\label{eq:L}
+ \boxed{L_n(\delta,\alpha_1)=
+ \frac{\pos{\sqrt{2\delta}-b_n(\alpha_1/2)/\sqrt\lambda}^{2}}
+ {2\left(1+e_n(\alpha_1/2)/\lambda\right)}.}
+\end{equation}
+Here $[x]_+=\max\{x,0\}$. Any $\eta<L_n(\delta,\alpha_1)$ satisfies
+\begin{equation}\label{eq:false-merging}
+ \Prob\{\Dh\le\eta\}\le\alpha_1
+ \quad\text{for each fixed pair with }\D\ge\delta.
+\end{equation}
+\end{theorem}
+\begin{proof}
+Use $b,e$ from~\eqref{eq:joint-event}, put $c=1+e/\lambda$, and work
+on $\mathcal E_{b,e}$. The inverse comparison gives
+\begin{equation}\label{eq:weighted-comparison}
+ \sqrt{2\Dh}=\norm{\widehat\Delta}_{\widehat A^{-1}}
+ \ge\frac1{\sqrt c}\norm{\widehat\Delta}_{A^{-1}}.
+\end{equation}
+Operator order holds for every vector, so it applies to the realized
+$\widehat\Delta$ even though it depends on $\widehat A$.
+The reverse triangle inequality in the norm induced by $A^{-1}$ gives
+\[
+ \norm{\widehat\Delta}_{A^{-1}}
+ \ge\pos{\norm{\Delta}_{A^{-1}}
+                 -\norm{\widehat\Delta-\Delta}_{A^{-1}}}.
+\]
+Since $A^{-1}\preceq\lambda^{-1}I$,
+\[
+ \norm{\widehat\Delta-\Delta}_{A^{-1}}
+ \le\frac1{\sqrt\lambda}\norm{\widehat\Delta-\Delta}_{\HH}
+ \le\frac b{\sqrt\lambda}.
+\]
+Moreover $\norm{\Delta}_{A^{-1}}=\sqrt{2\D}\ge\sqrt{2\delta}$.
+Combining these facts gives
+\[
+ \sqrt{2\Dh}\ge\frac1{\sqrt c}
+                  \pos{\sqrt{2\delta}-b/\sqrt\lambda}.
+\]
+Both sides are nonnegative, so squaring proves the lower bound.
+Its event has probability at least $1-\alpha_1$ by the union bound.
+If $\eta<L_n$, association implies $\Dh<L_n$, giving the error bound.
+\end{proof}
+The error in~\eqref{eq:false-merging} is an incorrect merge with a
+separated reference. The mean error reduces the usable separation by
+$b/\sqrt\lambda$, and the operator error introduces the factor
+$1+e/\lambda$. The bound is valid for every $e\ge0$; its lower
+endpoint is positive only if $\sqrt{2\delta}>b/\sqrt\lambda$.
+
+\section{A nonempty interval for a static classification threshold}\label{sec:threshold}
+
+Associate with the reference when $\Dh\le\eta$, and keep it separate when $\Dh>\eta$.
+Under $Q=P$, keeping the batch separate is an error. Under a non-merging
+regime, association with the reference is an incorrect merge. These are different probability
+models, so their error levels are not added to calibrate the two tests.
+
+\begin{theorem}[Admissible static-threshold interval]\label{cor:threshold}
+For given $\alpha_0,\alpha_1\in(0,1)$, any deterministic threshold with
+\begin{equation}\label{eq:threshold-interval}
+ U_n(\alpha_0)\le\eta<L_n(\delta,\alpha_1)
+\end{equation}
+satisfies
+\begin{equation}\label{eq:errors}
+ \Prob_{Q=P}\{\Dh>\eta\}\le\alpha_0,\qquad
+ \Prob_{\D\ge\delta}\{\Dh\le\eta\}\le\alpha_1.
+\end{equation}
+The second notation means each fixed pair satisfying the separation
+assumption; it is not a probability distribution on pairs.
+\end{theorem}
+\begin{proof}
+The first error event is contained in $\{\Dh>U_n(\alpha_0)\}$.
+Because $\eta<L_n$, the second is contained in
+$\{\Dh<L_n(\delta,\alpha_1)\}$. Apply the two theorems.
+The strict inequality at the right endpoint accounts for the acceptance
+rule at equality; it cannot in general be replaced by $\eta\le L_n$.
+\end{proof}
+
+\begin{proposition}[Nonempty threshold interval]\label{prop:nonempty}
+Put
+\[
+ b_0=b_n(\alpha_0),\quad b_1=b_n(\alpha_1/2),\quad
+ c=1+e_n(\alpha_1/2)/\lambda.
+\]
+Since $b_0>0$, the interval~\eqref{eq:threshold-interval} is nonempty
+if and only if
+\begin{equation}\label{eq:separation-condition}
+ \boxed{\delta>\frac{(b_1+\sqrt c\,b_0)^2}{2\lambda}.}
+\end{equation}
+\end{proposition}
+\begin{proof}
+The inequality $L_n>U_n$ is equivalent to
+$\pos{\sqrt{2\delta}-b_1/\sqrt\lambda}>\sqrt c\,b_0/\sqrt\lambda$.
+The right side is positive, so the positive part can be removed and
+the resulting positive inequality can be squared.
+\end{proof}
+
+\subsection{Common tolerance and explicit calibration}
+For $\alpha_0=\alpha_1=\alpha$, choose
+\begin{equation}\label{eq:eta}
+ \boxed{\eta=\frac{K}{n\lambda}
+       \left(1+\sqrt{\log\frac1\alpha}\right)^2.}
+\end{equation}
+It controls incorrect separation under the null at level $\alpha$
+without a population separation assumption. The sufficient separation
+for the non-merging guarantee is
+\begin{equation}\label{eq:explicit-delta}
+\begin{split}
+ \delta>\frac{K}{n\lambda}\Bigg[&1+\sqrt{\log\frac2\alpha}\\
+ &+\left(1+\sqrt{\log\frac1\alpha}\right)
+ \sqrt{1+\frac{K}{\lambda\sqrt n}
+                 \left(1+\sqrt{\log\frac2\alpha}\right)}
+ \Bigg]^2.
+\end{split}
+\end{equation}
+This is equivalent to nonemptiness of the displayed interval. It is not
+necessary for actual successful classification:
+the concentration radii may overestimate the realized errors.
+
+\subsection{Sample size and regularization}
+For fixed $K,\lambda,\alpha$ and fixed separated pair,
+$b_n,e_n\to0$, $U_n\to0$, and $L_n(\delta,\alpha)\to\delta$.
+Thus the certified interval eventually becomes nonempty.
+For fixed confidence, the two quantities controlling usefulness are
+\[
+ \frac{b_n}{\sqrt\lambda}=O((n\lambda)^{-1/2}),\qquad
+ \frac{e_n}{\lambda}=O((\lambda\sqrt n)^{-1}).
+\]
+These expressions explain why very small regularization makes the
+uniform bounds demanding. If $\lambda=\lambda_n$ changes, the
+population score changes, so the validity and size of an assumed
+separation must also be checked. One cannot optimize the explicit
+threshold while treating separation as a fixed unrelated constant.
+
+\subsection{An explicit sufficient batch size}
+\begin{corollary}[Batch size ensuring a nonempty interval]\label{cor:sample-size}
+For common tolerance $\alpha$, put
+\[
+ a_0=1+\sqrt{\log(1/\alpha)},\qquad
+ a_1=1+\sqrt{\log(2/\alpha)}.
+\]
+The interval is nonempty if the integer $n$ satisfies both
+\begin{equation}\label{eq:batch-size}
+ n\ge\left(\frac{Ka_1}{\lambda}\right)^2,
+ \qquad n>\frac{K(a_1+\sqrt2\,a_0)^2}{\lambda\delta}.
+\end{equation}
+\end{corollary}
+\begin{proof}
+The first condition gives $e_n(\alpha/2)/\lambda\le1$, so $c\le2$.
+Since $b_0=\sqrt{2K/n}\,a_0$ and $b_1=\sqrt{2K/n}\,a_1$, the
+right side of~\eqref{eq:separation-condition} is at most
+$K(a_1+\sqrt2\,a_0)^2/(n\lambda)$. The second condition makes this
+strictly smaller than $\delta$.
+\end{proof}
+
+\subsection{One static threshold for a fixed memory bank}\label{sec:bank}
+Let $P_1,\ldots,P_M$ be distinct fixed reference regimes and
+$\mathcal Q$ an admissible family of incoming distributions.
+Use the same $n,K,\lambda$ for all comparisons. Assume a uniform
+non-merging margin $\delta_*>0$ such that
+\begin{equation}\label{eq:bank-separation}
+ D_\lambda(Q;P_i)\ge\delta_*
+ \quad\text{for every }Q\in\mathcal Q
+ \text{ and every }i\text{ with }Q\ne P_i.
+\end{equation}
+This includes all wrong-reference comparisons for known regimes
+and all reference comparisons for novel regimes. Separation within
+the stored bank alone would not ensure separation for arbitrary
+unknown distributions.
+
+\begin{corollary}[Known and unknown regime classification]\label{cor:bank}
+Suppose each reference comparison satisfies Assumption~\ref{ass:setup}
+and~\eqref{eq:bank-separation}. Scores may share the incoming batch;
+reference batches need not be independent of one another. For
+$\alpha\in(0,1)$, choose a common static threshold with
+\begin{equation}\label{eq:bank-threshold}
+ U_n(\alpha/M)\le\eta<L_n(\delta_*,\alpha/M).
+\end{equation}
+Let $\widehat{\mathcal A}(Q)=\{i:\widehat D_{\lambda,i}\le\eta\}$.
+For $Q=P_j\in\mathcal Q$,
+\begin{equation}\label{eq:known-classification}
+ \Prob\{\widehat{\mathcal A}(Q)=\{j\}\}\ge1-\alpha.
+\end{equation}
+For $Q\in\mathcal Q$ different from every stored regime,
+\begin{equation}\label{eq:unknown-classification}
+ \Prob\{\widehat{\mathcal A}(Q)=\varnothing\}\ge1-\alpha.
+\end{equation}
+A common threshold exists whenever~\eqref{eq:explicit-delta} holds
+with $\delta=\delta_*$ and $\alpha$ replaced by $\alpha/M$.
+\end{corollary}
+\begin{proof}
+If $Q=P_j$, the null theorem bounds the event
+$\widehat D_{\lambda,j}>\eta$ by $\alpha/M$. For every $i\ne j$,
+the non-merging theorem bounds $\widehat D_{\lambda,i}\le\eta$
+by $\alpha/M$. A union bound over these $M$ undesired decisions gives
+failure probability at most $\alpha$; on their complement exactly
+$j$ is accepted. For a novel $Q$, all $M$ reference comparisons
+satisfy the non-merging hypothesis. A union bound on their association
+events gives an empty accepted set with probability at least $1-\alpha$.
+No independence between scores is used. Nonemptiness follows from
+\eqref{eq:separation-condition}.
+\end{proof}
+The corresponding decision associates a batch when exactly one
+reference is accepted, retains it as unknown when none are accepted,
+and abstains when multiple references are accepted. The guarantee
+is per incoming batch for a fixed bank under the stated sampling
+model. It does not assume that an arbitrarily selected or adaptively
+constructed memory sample has those same sampling properties.
+
+\appendix
+\section{RKHS and expectation foundations}\label{app:foundations}
+
+\subsection{The reproducing property}
+For $\phi(x)=k(\cdot,x)$,
+\[
+ f(x)=\inner{f}{\phi(x)}_{\HH},\qquad
+ \inner{\phi(x)}{\phi(y)}_{\HH}=k(x,y),\qquad
+ \norm{\phi(x)}_{\HH}^2=k(x,x).
+\]
+Cauchy--Schwarz implies $|k(x,y)|\le\sqrt{k(x,x)k(y,y)}\le K$
+and $|f(x)|\le\sqrt K\norm{f}_{\HH}$.
+A Hilbert-valued random element has a Bochner expectation when it is
+strongly measurable and its expected norm is finite. Our assumptions
+give these properties, since $\norm{\phi(X)}\le\sqrt K$ and
+$\norm{\phi(X)\otimes\phi(X)}_{\HS}\le K$.
+Linear functionals pass through these expectations, which justifies
+identities such as $\E f(X)=\inner{f}{\mu_P}$.
+
+\subsection{Boundedness and positivity of the second moment}
+For $f\in\HH$,
+\[
+ 0\le\inner{f}{T_Pf}=\E_P f(X)^2
+ \le K\norm{f}_{\HH}^2.
+\]
+This proves $0\preceq T_P\preceq KI$.
+The empirical version is proved by replacing the expectation with a
+finite average. Consequently $A^{-1}$ and $\widehat A^{-1}$ exist,
+and each has operator norm at most $1/\lambda$.
+
+\subsection{Why the score can be zero for distinct distributions}
+Since $A\preceq(K+\lambda)I$,
+\begin{equation}\label{eq:score-MMD}
+ \frac{\norm{\Delta}^2}{2(K+\lambda)}
+ \le\D\le\frac{\norm{\Delta}^2}{2\lambda}.
+\end{equation}
+Thus zero score is equivalent to equal mean embeddings. A noncharacteristic
+kernel can map different distributions to the same mean embedding.
+Positive score separation must therefore be assumed or established
+using properties of the kernel and the admissible distributions.
+
+\section{Centering, variance, and independence}\label{app:variance}
+
+\subsection{The Hilbert-space variance identity}
+Let $W$ be a square-integrable random element of a real Hilbert space
+and $\mu=\E W$. Expand:
+\begin{align*}
+ \E\norm{W-\mu}^2
+ &=\E\norm{W}^2-2\E\inner{W}{\mu}+\norm{\mu}^2\\
+ &=\E\norm{W}^2-2\inner{\E W}{\mu}+\norm{\mu}^2\\
+ &=\E\norm{W}^2-\norm{\mu}^2.
+\end{align*}
+The middle term does not vanish: it equals $-2\norm{\mu}^2$.
+It combines with the last term to leave a subtraction.
+No assumption that the uncentered observation has mean zero is used.
+
+\subsection{Independent empirical averages}
+If $W_1,\ldots,W_n$ are independent copies of $W$, let
+$R_r=W_r-\mu$. Independence gives, for $r\ne s$,
+\[
+ \E\inner{R_r}{R_s}=\inner{\E R_r}{\E R_s}=0.
+\]
+Hence
+\[
+ \E\left\lVert\frac1n\sum_rR_r\right\rVert^2
+ =\frac1{n^2}\sum_{r,s}\E\inner{R_r}{R_s}
+ =\frac1n\left(\E\norm{W}^2-\norm{\mu}^2\right).
+\]
+
+\subsection{An example separating a pointwise bound from an expectation}
+Consider two points $a,b$ with $k(x,y)=\mathbf1\{x=y\}$ and
+$P(a)=p$, $P(b)=1-p$. The feature vectors are orthonormal, $K=1$,
+and
+\[
+ \norm{\phi(a)-\mu_P}^2=2(1-p)^2,\qquad
+ \E\norm{\phi(X)-\mu_P}^2=2p(1-p)\le\frac12.
+\]
+At $p=0.01$, the first quantity is $1.9602>K$, but its expectation
+is $0.0198<K$. An individual large error does not contradict a small
+second moment. In particular, the exact second-moment estimate cannot
+be substituted for a pointwise summand bound in a concentration theorem.
+
+\subsection{What dependence would change}
+If $U=\widehat\mu_Q-\mu_Q$ and $V=\widehat\mu_P-\mu_P$, then always
+\[
+ \E\norm{U-V}^2=\E\norm{U}^2+\E\norm{V}^2
+                      -2\E\inner{U}{V}.
+\]
+Centering alone does not remove the last term. Independent windows
+do remove it. Dependence within a window likewise changes the
+variance of that window's mean. The classification results require the independence assumptions in
+Assumption~\ref{ass:setup}.
+
+\section{Rank-one operators and Hilbert--Schmidt norms}\label{app:rankone}
+
+Let $(e_j)$ be an orthonormal basis of $\HH$. A Hilbert--Schmidt
+operator $B$ has $\norm{B}_{\HS}^2=\sum_j\norm{Be_j}^2$.
+For rank-one operators, Parseval's identity gives
+\begin{align*}
+ \norm{u\otimes v}_{\HS}^2
+ &=\sum_j\norm{\inner{v}{e_j}u}^2
+ =\norm{u}^2\sum_j|\inner{v}{e_j}|^2
+ =\norm{u}^2\norm{v}^2,\\
+ \inner{u\otimes v}{a\otimes b}_{\HS}
+ &=\inner{u}{a}\inner{v}{b}.
+\end{align*}
+Taking $u=v=\phi(x)$ and $a=b=\phi(y)$ gives~\eqref{eq:Vnorm}.
+Expanding the squared difference then gives~\eqref{eq:Vdiameter}.
+For any unit vector $f$, extending $f$ to an orthonormal basis shows
+$\norm{Bf}^2\le\norm{B}_{\HS}^2$; taking a supremum proves
+$\norm{B}_{\op}\le\norm{B}_{\HS}$.
+
+It is the error $\widehat T_P-T_P$ that is Hilbert--Schmidt. In an
+infinite-dimensional RKHS, $I$ need not be Hilbert--Schmidt, and we
+do not claim that $A=T_P+\lambda I$ is Hilbert--Schmidt. We use
+operator norms and order for the regularized operators instead.
+
+\section{McDiarmid's inequality and constant bookkeeping}\label{app:mcdiarmid}
+
+Let $Z_1,\ldots,Z_N$ be independent, and let $f$ be a measurable
+real function such that changing coordinate $j$ changes $f$ by at
+most a deterministic $c_j$. Then
+\begin{equation}\label{eq:mcdiarmid}
+ \Prob\{f-\E f\ge t\}
+ \le\exp\left(-\frac{2t^2}{\sum_{j=1}^Nc_j^2}\right).
+\end{equation}
+It follows that, with probability at least $1-\gamma$,
+\[
+ f\le\E f+\sqrt{\frac12\sum_jc_j^2\log(1/\gamma)}.
+\]
+The squared sum must count \emph{all} independent input coordinates.
+For the mean difference there are $2n$; for the reference operator
+there are $n$.
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+Function & Inputs & Sensitivity & Squared sum\\
+\midrule
+$\norm{\widehat\Delta-\Delta}$ & $2n$ & $\sqrt{2K}/n$ & $4K/n$\\
+$\norm{\widehat T_P-T_P}_{\HS}$ & $n$ & $\sqrt2K/n$ & $2K^2/n$\\
+\bottomrule
+\end{tabular}
+\end{center}
+For a two-sided scalar deviation around the expectation, a union bound
+over the upper and lower tails introduces a factor $2$ in probability,
+or $\log(2/\gamma)$ in the radius. Our main lemmas need only an
+upper tail for an already nonnegative error norm, so they use
+$\log(1/\gamma)$ instead.
+
+\section{Operator order and the weighted norm}
+\label{app:order}
+
+\subsection{Order and inversion}
+For self-adjoint operators, $B\preceq C$ means
+$\inner{v}{Bv}\le\inner{v}{Cv}$ for every $v$.
+If $0\prec B\preceq C$ with bounded inverses, let
+$S=C^{-1/2}BC^{-1/2}$. Then $0\prec S\preceq I$, so its spectral
+values are in $(0,1]$ and $S^{-1}\succeq I$. Consequently,
+\[
+ B^{-1}=C^{-1/2}S^{-1}C^{-1/2}\succeq C^{-1}.
+\]
+This proves order reversal without multiplying noncommuting inequalities
+in an invalid order. Apply this to $B=\widehat A$ and $C=cA$ in Lemma~\ref{lem:inverse}.
+
+\subsection{The reverse triangle inequality in the weighted norm}
+Since $A^{-1}$ is positive with bounded inverse,
+\[
+ \norm{v}_{A^{-1}}=\norm{A^{-1/2}v}_{\HH}
+\]
+is a norm. Its triangle inequality is the Hilbert-space triangle
+inequality after applying the linear map $A^{-1/2}$. Therefore
+\[
+ \norm{u}_{A^{-1}}\ge
+ \norm{v}_{A^{-1}}-\norm{u-v}_{A^{-1}}.
+\]
+The left side is nonnegative, so the positive part can be taken on
+the right. This is the positive part in the non-merging bound.
+Also $A^{-1}\preceq\lambda^{-1}I$ implies
+$\norm{u-v}_{A^{-1}}\le\norm{u-v}_{\HH}/\sqrt\lambda$.
+
+\subsection{Why shared reference observations are allowed}
+For any two events, a union bound gives
+$\Prob(E_1\cap E_2)\ge1-\Prob(E_1^c)-\Prob(E_2^c)$.
+Once both error bounds hold, operator order is an inequality for every
+vector on that outcome. It can be applied to the realized
+$\widehat\Delta$ without assuming that it is independent of
+$\widehat A$. In particular, the argument does not factor an
+expectation involving these estimators.
+
+\subsection{An explicit example where the estimators are coupled}
+Take $\mathcal X=\{0,1\}$ and the scalar kernel $k(x,y)=xy$.
+It is positive semidefinite and nonnegative, with $K=1$; identify
+$\phi(x)=x$ in a one-dimensional feature space. Let $n=1$,
+$P=Q=\operatorname{Bernoulli}(0.2)$, $X,Y$ independent, and
+$\lambda=1$. Then
+\[
+ \widehat T_P=X,\quad \widehat\Delta=Y-X,\quad
+ \widehat A^{-1}=\frac1{1+X},\quad
+ \Dh=\frac{(Y-X)^2}{2(1+X)}.
+\]
+The events $(X,Y)=(0,1)$ and $(1,0)$ each have probability $0.16$.
+Their scores are $1/2$ and $1/4$, respectively; the other scores vanish.
+Therefore
+\[
+ \E\Dh=0.16\left(\frac12+\frac14\right)=0.12,
+ \qquad
+ \frac12\E[\widehat\Delta^2]\E[\widehat A^{-1}]
+ =\frac12(0.32)(0.9)=0.144.
+\]
+The failed factorization demonstrates actual dependence. Our null
+domination and joint-event operator argument remain valid because
+neither uses this factorization.
+
+\section{Separation, identifiability, and sufficient conditions}
+\label{app:separation}
+
+For a fixed finite collection with injective mean embeddings and fixed
+$\lambda$, every distinct ordered pair has positive score. The minimum
+over finitely many such positive scores is positive. This supports a
+finite-bank separation assumption.
+It does not imply a positive minimum over all distinct distributions.
+To see why, fix $P,R$ and let $Q_\varepsilon=(1-\varepsilon)P+\varepsilon R$.
+Then
+\[
+ \mu_{Q_\varepsilon}-\mu_P=\varepsilon(\mu_R-\mu_P),\qquad
+ D_\lambda(Q_\varepsilon;P)=\varepsilon^2D_\lambda(R;P)\longrightarrow0.
+\]
+This example applies even to characteristic Gaussian kernels. A uniform
+positive separation for unknown regimes therefore restricts the allowed
+alternatives; it is not a consequence of $P\ne Q$.
+
+The static-threshold separation criterion~\eqref{eq:separation-condition} is necessary
+and sufficient for nonemptiness of the interval defined by our chosen
+$U_n,L_n$. It is only a sufficient condition for small actual error.
+Failure of this criterion means the displayed bounds do not certify
+the desired threshold, not that classification is impossible.
+
+\section{Variational derivation of the classification score}\label{app:variational}
+For a reference distribution $P$, the regularized RKHS Pearson
+functional is
+\begin{equation}\label{eq:variational}
+ \sup_{f\in\HH}\left\{
+ \E_Qf-\E_Pf-\frac12\E_P f^2-\frac\lambda2\norm{f}_{\HH}^2
+ \right\}.
+\end{equation}
+The reproducing property identifies the expression in braces with
+$\inner{f}{\Delta}-\frac12\inner{f}{Af}$. Completing the square gives
+\[
+ \inner{f}{\Delta}-\frac12\inner{f}{Af}
+ =\frac12\inner{\Delta}{A^{-1}\Delta}
+  -\frac12\norm{f-A^{-1}\Delta}_{A}^{2}.
+\]
+The final squared norm is nonnegative and vanishes only at
+$f=A^{-1}\Delta$. The supremum is therefore exactly~\eqref{eq:D}.
+Replacing population expectations by empirical averages yields
+\eqref{eq:Dhat}, with maximizer $\widehat A^{-1}\widehat\Delta$.
+The factor $1/2$ is part of the normalization, and the restriction to
+$\HH$ and the regularization are part of the score itself. The
+separation assumption refers to this score, not to an unrestricted
+density-ratio functional.
+
+\section{Expansion of the static-threshold condition}\label{app:threshold}
+At common tolerance $\alpha$, write
+\[
+ a_0=1+\sqrt{\log(1/\alpha)},\qquad
+ a_1=1+\sqrt{\log(2/\alpha)}.
+\]
+Then
+\[
+ b_0=\sqrt{\frac{2K}{n}}a_0,\qquad
+ b_1=\sqrt{\frac{2K}{n}}a_1,\qquad
+ c=1+\frac{K}{\lambda\sqrt n}a_1.
+\]
+Substituting in~\eqref{eq:separation-condition},
+\begin{align*}
+ \frac{(b_1+\sqrt c\,b_0)^2}{2\lambda}
+ &=\frac1{2\lambda}\frac{2K}{n}
+   \left(a_1+\sqrt{1+\frac{K}{\lambda\sqrt n}a_1}\,a_0\right)^2\\
+ &=\frac{K}{n\lambda}
+   \left(a_1+a_0\sqrt{1+\frac{K}{\lambda\sqrt n}a_1}\right)^2.
+\end{align*}
+Expanding $a_0,a_1$ gives~\eqref{eq:explicit-delta}. The strict
+inequality means that the lower confidence bound for a non-merging
+regime lies strictly above the null upper confidence bound. These
+are bounds for two different population scenarios. Their separation
+certifies that one predetermined threshold can implement both
+classification decisions at the stated error levels.
+
+\end{document}
