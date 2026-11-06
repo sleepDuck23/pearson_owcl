@@ -1,12 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Import the data generator and all four OWR models
+# Import the data generator and the MMD and Pearson models
 from data.generation import generate_regime_stream
 from model.owcl_mmd import OWR_CPD
-from model.owcl_pearson import PearsonOWRCPD       
-from model.owcl_p_coh import HybridOWRCPD
-from model.owcl_mah import MahalanobisOWRCPD       
+from model.owcl_pearson import PearsonOWRCPD
 
 def get_regime_sequence(regime_log: list) -> str:
     """Preserve assignments after transitions, including recall of the same ID."""
@@ -94,7 +92,7 @@ def main():
         seed=42
     )
 
-    # 2. Initialize all four models
+    # 2. Initialize the MMD and Pearson models
     mmd_model = OWR_CPD(
         n=n, 
         m=m, 
@@ -117,42 +115,14 @@ def main():
         normalize_distance=False
     )
 
-    hybrid_model = HybridOWRCPD(
-        n=n, 
-        m=m, 
-        tau=0.60,  
-        nu=0.90,  
-        k_conf=k_conf, 
-        reg_lambda=1e-5, 
-        gamma=gamma,
-        dynamic_gamma=dynamic_gamma,
-        normalize_distance=False
-    )
-
-    mahalanobis_model = MahalanobisOWRCPD(
-        n=n, 
-        m=m, 
-        tau=0.60,  
-        nu=0.08,  
-        k_conf=k_conf, 
-        reg_lambda=1e-5, 
-        gamma=gamma,
-        dynamic_gamma=dynamic_gamma,
-        normalize_distance=False
-    )
-
     # 3. Run the online simulation
     print("Starting concurrent monitoring...")
     mmd_scores = []
     pearson_scores = []
-    hybrid_scores = []
-    mah_scores = []
     
     for t in range(total_length):
         mmd_scores.append(mmd_model.update(data[t]))
         pearson_scores.append(pearson_model.update(data[t]))
-        hybrid_scores.append(hybrid_model.update(data[t]))
-        mah_scores.append(mahalanobis_model.update(data[t]))
 
     # 4. Readable Summary Report
     print("\n" + "="*50)
@@ -163,14 +133,13 @@ def main():
     print(f"  Change Points      : {actual_cps}")
     print(f"  Regime Sequence    : A -> B -> C -> B -> A -> D")
 
-    for name, model in (("MMD", mmd_model), ("PEARSON", pearson_model),
-                        ("HYBRID", hybrid_model), ("MAHALANOBIS", mahalanobis_model)):
+    for name, model in (("MMD", mmd_model), ("PEARSON", pearson_model)):
         print(f"\n {name} OWR MODEL")
         print_detection_summary(actual_cps, model)
     print("\n" + "="*50)
 
-    # 5. Visualization and Comparison (5 subplots)
-    fig, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(5, 1, figsize=(12, 16), sharex=True)
+    # 5. Visualization and Comparison (stream and two model scores)
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
 
     # --- Panel 1: Input Signal ---
     ax1.plot(data, color="black", linewidth=0.8, alpha=0.7, label="Stream Data")
@@ -201,32 +170,10 @@ def main():
         label = "Pearson Detection" if i == 0 else ""
         ax3.axvline(x=cp, color="red", linestyle="-", linewidth=2, label=label)
     ax3.set_title("Pearson OWR-CPD Model")
+    ax3.set_xlabel("Time Step (t)")
     ax3.set_ylabel("Pearson Score")
     ax3.legend(loc="upper left")
     ax3.grid(True, alpha=0.3)
-
-    # --- Panel 4: Hybrid Model Score ---
-    ax4.plot(hybrid_scores, color="crimson", linewidth=1.5, label="Hybrid Score (Pearson CPD)")
-    ax4.axhline(y=hybrid_model.tau, color="darkorange", linestyle="--", linewidth=2, label=rf"Threshold $\tau$ = {hybrid_model.tau}")
-    for i, cp in enumerate(detection_indices(hybrid_model)):
-        label = "Hybrid Detection" if i == 0 else ""
-        ax4.axvline(x=cp, color="red", linestyle="-", linewidth=2, label=label)
-    ax4.set_title("Hybrid OWR-CPD Model")
-    ax4.set_ylabel("Hybrid Score")
-    ax4.legend(loc="upper left")
-    ax4.grid(True, alpha=0.3)
-
-    # --- Panel 5: Mahalanobis Model Score ---
-    ax5.plot(mah_scores, color="darkmagenta", linewidth=1.5, label="Mahalanobis Score (Pearson CPD)")
-    ax5.axhline(y=mahalanobis_model.tau, color="goldenrod", linestyle="--", linewidth=2, label=rf"Threshold $\tau$ = {mahalanobis_model.tau}")
-    for i, cp in enumerate(detection_indices(mahalanobis_model)):
-        label = "Mahalanobis Detection" if i == 0 else ""
-        ax5.axvline(x=cp, color="red", linestyle="-", linewidth=2, label=label)
-    ax5.set_title("Mahalanobis OWR-CPD Model")
-    ax5.set_xlabel("Time Step (t)")
-    ax5.set_ylabel("Detection Score")
-    ax5.legend(loc="upper left")
-    ax5.grid(True, alpha=0.3)
 
     plt.tight_layout()
     plt.show()

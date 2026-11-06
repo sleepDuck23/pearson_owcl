@@ -1,16 +1,14 @@
 import numpy as np
 from main_mmd_pearson import (
-    detection_indices, get_regime_sequence, calculate_delays, print_detection_summary,
+    detection_indices, print_detection_summary,
 )
 import matplotlib.pyplot as plt
 from sklearn.datasets import fetch_openml
 from sklearn.decomposition import PCA
 
-# Import your models
+# Import the MMD and Pearson models
 from model.owcl_mmd import OWR_CPD
-from model.owcl_pearson import PearsonOWRCPD       
-from model.owcl_p_coh import HybridOWRCPD          
-from model.owcl_mah import MahalanobisOWRCPD       
+from model.owcl_pearson import PearsonOWRCPD
 
 
 
@@ -117,43 +115,15 @@ def main():
         normalize_distance=normalize_distance
     )
 
-    hybrid_model = HybridOWRCPD(
-        n=n, 
-        m=m, 
-        tau=0.38, 
-        nu=0.96, 
-        k_conf=k_conf, 
-        reg_lambda=10,
-        gamma=gamma,
-        factor=0.75,  
-        dynamic_gamma=dynamic_gamma,
-        normalize_distance=normalize_distance
-    )
-
-    mahalanobis_model = MahalanobisOWRCPD(
-        n=n, 
-        m=m, 
-        tau=0.30, 
-        nu=0.025, 
-        k_conf=k_conf, 
-        reg_lambda=10,
-        gamma=gamma,
-        factor=0.5,
-        dynamic_gamma=dynamic_gamma,
-        normalize_distance=normalize_distance
-    )
-
     # ==========================================
     # RUN STREAMING SIMULATION
     # ==========================================
     print(f"Starting concurrent monitoring (Total steps: {total_length})...")
-    mmd_scores, pearson_scores, hybrid_scores, mah_scores = [], [], [], []
+    mmd_scores, pearson_scores = [], []
     
     for t in range(total_length):
         mmd_scores.append(mmd_model.update(data[t]))
         pearson_scores.append(pearson_model.update(data[t]))
-        hybrid_scores.append(hybrid_model.update(data[t]))
-        mah_scores.append(mahalanobis_model.update(data[t]))
 
     # ==========================================
     # REPORTING & VISUALIZATION
@@ -167,8 +137,6 @@ def main():
     models = [
         ("MMD", mmd_model, mmd_scores, "teal"),
         ("PEARSON", pearson_model, pearson_scores, "purple"),
-        ("HYBRID", hybrid_model, hybrid_scores, "crimson"),
-        ("MAHALANOBIS", mahalanobis_model, mah_scores, "darkmagenta")
     ]
 
     for name, model, scores, color in models:
@@ -176,7 +144,7 @@ def main():
         print_detection_summary(actual_cps, model)
     print("="*50)
 
-    fig, axes = plt.subplots(4, 1, figsize=(12, 12), sharex=True)
+    fig, axes = plt.subplots(2, 1, figsize=(12, 7), sharex=True)
     fig.suptitle(f"MNIST Digit Stream (PCA={USE_PCA})", fontsize=14)
 
     for ax, (name, model, scores, color) in zip(axes, models):
@@ -192,6 +160,7 @@ def main():
         ax.set_title(f"{name} OWR-CPD Model")
         ax.legend(loc="upper left")
 
+    axes[-1].set_xlabel("Time Step (t)")
     plt.tight_layout()
     plt.show()
 

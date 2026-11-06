@@ -1,6 +1,6 @@
 import numpy as np
 from main_mmd_pearson import (
-    detection_indices, get_regime_sequence, calculate_delays, print_detection_summary,
+    detection_indices, print_detection_summary,
 )
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
@@ -9,11 +9,9 @@ from sklearn.decomposition import PCA
 # Import the new PAMAP2 data manager
 from data.manage_pamap2 import load_pamap2_blocks, load_pamap2_full_blocks
 
-# Import your models
+# Import the MMD and Pearson models
 from model.owcl_mmd import OWR_CPD
-from model.owcl_pearson import PearsonOWRCPD       # Refactored class
-from model.owcl_p_coh import HybridOWRCPD          # Refactored class
-from model.owcl_mah import MahalanobisOWRCPD       # Refactored class
+from model.owcl_pearson import PearsonOWRCPD
 
 
 def build_stream(sequence, activities, block_size):
@@ -73,7 +71,7 @@ def run_experiment():
     else:
         print(f"Skipping PCA. Streaming {stream.shape[1]} sensor features...")
 
-    # Initialize Models using Refactored Names
+    # Initialize the MMD and Pearson models
     mmd_model = OWR_CPD(
         n=n, 
         m=m, 
@@ -96,30 +94,6 @@ def run_experiment():
         normalize_distance=False
     )
     
-    hybrid_model = HybridOWRCPD(
-        n=n, 
-        m=m, 
-        tau=0.80, 
-        nu=0.96, 
-        k_conf=k_conf, 
-        reg_lambda=5.0, 
-        factor=1.0,
-        dynamic_gamma=dynamic_gamma,
-        normalize_distance=False
-    )
-    
-    mahalanobis_model = MahalanobisOWRCPD(
-        n=n, 
-        m=m, 
-        tau=0.80, 
-        nu=0.05, 
-        k_conf=k_conf, 
-        reg_lambda=10.0, 
-        factor=1.0,
-        dynamic_gamma=dynamic_gamma,
-        normalize_distance=False
-    )
-
     total_steps = len(stream_processed)
     print(f"Starting concurrent monitoring (Total steps: {total_steps})...")
 
@@ -128,24 +102,18 @@ def run_experiment():
         x = stream_processed[t]
         mmd_model.update(x)
         pearson_model.update(x)
-        hybrid_model.update(x)
-        mahalanobis_model.update(x)
 
     # Extract Scores
-    mmd_scores = getattr(mmd_model, 'mmd_scores', getattr(mmd_model, 'scores', []))
-    pearson_scores = getattr(pearson_model, 'pearson_div_scores', getattr(pearson_model, 'scores', []))
-    hybrid_scores = getattr(hybrid_model, 'hybrid_scores', getattr(hybrid_model, 'scores', []))
-    mah_scores = getattr(mahalanobis_model, 'pearson_div_scores', getattr(mahalanobis_model, 'scores', []))
+    mmd_scores = mmd_model.mmd_scores
+    pearson_scores = pearson_model.pearson_div_scores
 
     # Plotting
-    fig, axes = plt.subplots(4, 1, figsize=(12, 10), sharex=True)
+    fig, axes = plt.subplots(2, 1, figsize=(12, 7), sharex=True)
     fig.suptitle(f"PAMAP2 Activity Stream (PCA={USE_PCA})", fontsize=14)
 
     models_data = [
         ("MMD Model", mmd_scores, mmd_model.eta, detection_indices(mmd_model), 'teal'),
         ("Pearson Model", pearson_scores, pearson_model.tau, detection_indices(pearson_model), 'purple'),
-        ("Hybrid Model", hybrid_scores, hybrid_model.tau, detection_indices(hybrid_model), 'crimson'),
-        ("Mahalanobis Model", mah_scores, mahalanobis_model.tau, detection_indices(mahalanobis_model), 'indigo')
     ]
 
     for idx, (name, scores, threshold, changepoints, color) in enumerate(models_data):
@@ -163,6 +131,7 @@ def run_experiment():
         ax.legend(loc='upper left', fontsize=8)
         ax.grid(True, alpha=0.3)
 
+    axes[-1].set_xlabel("Time Step (t)")
     plt.tight_layout()
 
     # --- TERMINAL SUMMARY OUTPUT ---
@@ -175,8 +144,6 @@ def run_experiment():
     models = [
         ("MMD OWR MODEL", mmd_model),
         ("PEARSON OWR MODEL", pearson_model),
-        ("HYBRID OWR MODEL", hybrid_model),
-        ("MAHALANOBIS OWR MODEL", mahalanobis_model)
     ]
 
     for name, model in models:

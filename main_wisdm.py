@@ -1,16 +1,14 @@
 import numpy as np
 from main_mmd_pearson import (
-    detection_indices, get_regime_sequence, calculate_delays, print_detection_summary,
+    detection_indices, print_detection_summary,
 )
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 
-# Import your models
+# Import the MMD and Pearson models
 from model.owcl_mmd import OWR_CPD
-from model.owcl_pearson import PearsonOWRCPD       # Refactored class
-from model.owcl_p_coh import HybridOWRCPD          # Refactored class
-from model.owcl_mah import MahalanobisOWRCPD       # Refactored class
+from model.owcl_pearson import PearsonOWRCPD
 
 
 
@@ -97,7 +95,7 @@ def run_experiment():
     else:
         print("Skipping PCA. Streaming 3D signal directly...")
 
-    # Initialize Models using Refactored Names
+    # Initialize the MMD and Pearson models
     mmd_model = OWR_CPD(
         n=n, 
         m=m, 
@@ -119,30 +117,6 @@ def run_experiment():
         normalize_distance=False
     )
     
-    hybrid_model = HybridOWRCPD(
-        n=n, 
-        m=m, 
-        tau=0.50, 
-        nu=0.96, 
-        k_conf=k_conf, 
-        reg_lambda=1e-2, 
-        factor=1.0,
-        dynamic_gamma=dynamic_gamma,
-        normalize_distance=False
-    )
-    
-    mahalanobis_model = MahalanobisOWRCPD(
-        n=n, 
-        m=m, 
-        tau=0.50, 
-        nu=0.025, 
-        k_conf=k_conf, 
-        reg_lambda=1e-2, 
-        factor=1.0,
-        dynamic_gamma=dynamic_gamma,
-        normalize_distance=False
-    )
-
     total_steps = len(stream_processed)
     print(f"Starting concurrent monitoring (Total steps: {total_steps})...")
 
@@ -151,24 +125,18 @@ def run_experiment():
         x = stream_processed[t]
         mmd_model.update(x)
         pearson_model.update(x)
-        hybrid_model.update(x)
-        mahalanobis_model.update(x)
 
-    # Safely extract scores
-    mmd_scores = getattr(mmd_model, 'mmd_scores', getattr(mmd_model, 'scores', []))
-    pearson_scores = getattr(pearson_model, 'pearson_div_scores', getattr(pearson_model, 'scores', []))
-    hybrid_scores = getattr(hybrid_model, 'hybrid_scores', getattr(hybrid_model, 'scores', []))
-    mah_scores = getattr(mahalanobis_model, 'pearson_div_scores', getattr(mahalanobis_model, 'scores', []))
+    # Extract scores
+    mmd_scores = mmd_model.mmd_scores
+    pearson_scores = pearson_model.pearson_div_scores
 
     # Plotting
-    fig, axes = plt.subplots(4, 1, figsize=(12, 10), sharex=True)
+    fig, axes = plt.subplots(2, 1, figsize=(12, 7), sharex=True)
     fig.suptitle(f"Synthetic Activity Stream (WISDM placeholder) (PCA={USE_PCA})", fontsize=14)
 
     models_data = [
         ("MMD Model", mmd_scores, mmd_model.eta, detection_indices(mmd_model), 'teal'),
         ("Pearson Model", pearson_scores, pearson_model.tau, detection_indices(pearson_model), 'purple'),
-        ("Hybrid Model", hybrid_scores, hybrid_model.tau, detection_indices(hybrid_model), 'crimson'),
-        ("Mahalanobis Model", mah_scores, mahalanobis_model.tau, detection_indices(mahalanobis_model), 'indigo')
     ]
 
     for idx, (name, scores, threshold, changepoints, color) in enumerate(models_data):
@@ -186,6 +154,7 @@ def run_experiment():
         ax.legend(loc='upper left', fontsize=8)
         ax.grid(True, alpha=0.3)
 
+    axes[-1].set_xlabel("Time Step (t)")
     plt.tight_layout()
 
     # --- TERMINAL SUMMARY OUTPUT ---
@@ -198,8 +167,6 @@ def run_experiment():
     models_summary = [
         ("MMD OWR MODEL", mmd_model),
         ("PEARSON OWR MODEL", pearson_model),
-        ("HYBRID OWR MODEL", hybrid_model),
-        ("MAHALANOBIS OWR MODEL", mahalanobis_model)
     ]
 
     for name, model in models_summary:

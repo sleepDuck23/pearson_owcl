@@ -1,14 +1,12 @@
 import numpy as np
 from main_mmd_pearson import (
-    detection_indices, get_regime_sequence, calculate_delays, print_detection_summary,
+    detection_indices, print_detection_summary,
 )
 import matplotlib.pyplot as plt
 
-# Import all four OWR models 
+# Import the MMD and Pearson models
 from model.owcl_mmd import OWR_CPD
-from model.owcl_pearson import PearsonOWRCPD       
-from model.owcl_p_coh import HybridOWRCPD          
-from model.owcl_mah import MahalanobisOWRCPD       
+from model.owcl_pearson import PearsonOWRCPD
 
 
 
@@ -108,31 +106,13 @@ def main():
         normalize_distance=False
     )
 
-    hybrid_model = HybridOWRCPD(
-        n=n, m=m, tau=0.40, nu=0.90, 
-        k_conf=k_conf, reg_lambda=1e-1, gamma=gamma,
-        factor=1.0,
-        dynamic_gamma=dynamic_gamma,
-        normalize_distance=False
-    )
-
-    mahalanobis_model = MahalanobisOWRCPD(
-        n=n, m=m, tau=0.65, nu=0.08, 
-        k_conf=k_conf, reg_lambda=1e-1, gamma=gamma,
-        factor = 1.0,
-        dynamic_gamma=dynamic_gamma,
-        normalize_distance=False
-    )
-
     # Run Simulation
     print(f"Starting concurrent monitoring (Total steps: {total_length})...")
-    mmd_scores, pearson_scores, hybrid_scores, mah_scores = [], [], [], []
+    mmd_scores, pearson_scores = [], []
     
     for t in range(total_length):
         mmd_scores.append(mmd_model.update(data[t]))
         pearson_scores.append(pearson_model.update(data[t]))
-        hybrid_scores.append(hybrid_model.update(data[t]))
-        mah_scores.append(mahalanobis_model.update(data[t]))
 
     # Report
     print("\n" + "="*50)
@@ -144,8 +124,6 @@ def main():
     models_summary = [
         ("MMD OWR MODEL", mmd_model),
         ("PEARSON OWR MODEL", pearson_model),
-        ("HYBRID OWR MODEL", hybrid_model),
-        ("MAHALANOBIS OWR MODEL", mahalanobis_model)
     ]
 
     for name, model in models_summary:
@@ -154,7 +132,7 @@ def main():
     print("="*50)
 
     # Visualization
-    fig, axes = plt.subplots(5, 1, figsize=(12, 16), sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
     
     axes[0].plot(data, color="black", linewidth=0.5, alpha=0.8, label=f"Tier {TIER} Stream")
     for cp in actual_cps:
@@ -165,8 +143,6 @@ def main():
     model_data = [
         (mmd_scores, mmd_model, "MMD", "teal"),
         (pearson_scores, pearson_model, "Pearson", "purple"),
-        (hybrid_scores, hybrid_model, "Hybrid", "crimson"),
-        (mah_scores, mahalanobis_model, "Mahalanobis", "darkmagenta")
     ]
 
     for ax, (scores, model, name, color) in zip(axes[1:], model_data):
@@ -181,6 +157,7 @@ def main():
         ax.set_title(f"{name} OWR-CPD Model")
         ax.legend(loc="upper left")
 
+    axes[-1].set_xlabel("Time Step (t)")
     plt.tight_layout()
     plt.show()
 
