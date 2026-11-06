@@ -70,6 +70,7 @@ class OWR_CPD:
         self.global_changepoints = []
         self.mmd_scores = []
         self.regime_log = []
+        self.recognition_log = []
 
     def _sq_distances(self, X, Y):
         return squared_distances(X, Y, normalize=False)
@@ -89,6 +90,12 @@ class OWR_CPD:
             distances = self._sq_distances(X_data, X_data)
             self.gamma = median_gamma(distances, self.factor, self.gamma)
         return self.gamma
+
+    def _build_regime(self, observations):
+        """Choose the representative's bandwidth before computing its embedding."""
+        gamma = self._update_gamma_median_heuristic(observations)
+        K = self._rbf_kernel(observations, observations, gamma_override=gamma)
+        return {'X': list(observations), 'gamma': gamma, 'mu_K': K.mean(axis=1)}
 
     def _compute_mmd_squared(self, X, Y):
         """Computes the biased empirical squared MMD (V-statistic) between two windows using the active gamma."""
@@ -126,10 +133,12 @@ class OWR_CPD:
             
             if len(self.X) == self.n:
                 # Dynamically tune gamma for the first regime
-                gamma_init = self._update_gamma_median_heuristic(self.X)
-                
-                # Store initial regime representative as a dictionary
-                self.regimes.append({'X': list(self.X), 'gamma': gamma_init})
+                self.regimes.append(self._build_regime(self.X))
+                self.recognition_log.append({
+                    'time': self.t, 'regime': 0, 'is_new': True,
+                    'alarm_time': None, 'batch_start': 0, 'batch_end': self.t,
+                    'gamma': self.gamma,
+                })
                 self.active_regime_id = 0
                 self.state = "WARMUP_Y"
                 
@@ -140,6 +149,7 @@ class OWR_CPD:
             
             if len(self.Y) == self.m:
                 self.state = "ACTIVE"
+                score = self._compute_mmd_squared(self.X, self.Y)
                 
         # --- PHASE 3: Active Monitoring ---
         elif self.state == "ACTIVE":
@@ -154,21 +164,6 @@ class OWR_CPD:
             # Evaluate MMD (Eq. 4)
             score = self._compute_mmd_squared(self.X, self.Y)
             
-            if score > self.eta:
-                self.consec += 1
-            else:
-                self.consec = 0
-                
-            if self.consec >= self.k_conf:
-                # Confirmed Change Point
-                cp_time = self.t
-                self.global_changepoints.append(cp_time)
-                print(f"\nTime {cp_time} (detected at {self.t}): *** CHANGE CONFIRMED *** (MMD={score:.4f} > {self.eta})")
-                
-                self.consec = 0
-                self.X_prime = []
-                self.state = "COLLECT_PURE_WINDOW"
-                
         # --- PHASE 4: OWR Classification ---
         elif self.state == "COLLECT_PURE_WINDOW":
             self.X_prime.append(x)
@@ -176,6 +171,8 @@ class OWR_CPD:
             
             if len(self.X_prime) == self.n:
                 print(f"\n  [Classification Phase @ Time {self.t}]")
+                # Candidate comparisons keep each stored representative's gamma.
+                new_regime = self._build_regime(self.X_prime)
                 coherence_scores = []
                 
                 # Check coherence against all stored regimes
@@ -192,24 +189,38 @@ class OWR_CPD:
                     best_i = -1
                     max_coh = -float('inf')
                         
-                # Profile the new window & extract the newly tuned gamma
-                new_gamma = self._update_gamma_median_heuristic(self.X_prime)
-                
                 # Classification Decision
                 if max_coh >= self.nu:
                     print(f"  -> RESULT: Assigned to KNOWN Regime {best_i} (Max = {max_coh:.4f} >= {self.nu})\n")
                     self.active_regime_id = best_i
-                    self.regimes[best_i] = {'X': list(self.X_prime), 'gamma': new_gamma}
+                    self.regimes[best_i] = new_regime
                 else:
                     new_id = len(self.regimes)
                     print(f"  -> RESULT: Initiating NOVEL Regime {new_id} (Max = {max_coh:.4f} < {self.nu})\n")
                     self.active_regime_id = new_id
-                    self.regimes.append({'X': list(self.X_prime), 'gamma': new_gamma})
+                    self.regimes.append(new_regime)
+
+                self.recognition_log.append({
+                    'time': self.t, 'regime': int(self.active_regime_id),
+                    'is_new': bool(max_coh < self.nu),
+                    'alarm_time': self.global_changepoints[-1],
+                    'batch_start': self.t - self.n, 'batch_end': self.t,
+                    'gamma': new_regime['gamma'],
+                })
                 
                 # Restart Active Monitoring
                 self.X = list(self.X_prime)
                 self.Y = []
                 self.state = "WARMUP_Y"
                 
+        if np.isfinite(score):
+            self.consec = self.consec + 1 if score > self.eta else 0
+            if self.consec >= self.k_conf:
+                self.global_changepoints.append(self.t)
+                print(f"\nTime {self.t}: *** CHANGE CONFIRMED *** (MMD={score:.4f} > {self.eta})")
+                self.consec = 0
+                self.X_prime = []
+                self.state = "COLLECT_PURE_WINDOW"
+
         self.mmd_scores.append(score)
         return score

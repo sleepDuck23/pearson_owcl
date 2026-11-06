@@ -1,168 +1,125 @@
+"""ICASSP section 5.3: both MNIST sequences with held-out calibration."""
+
+from pathlib import Path
 import numpy as np
-from main_mmd_pearson import (
-    detection_indices, print_detection_summary,
-)
-import matplotlib.pyplot as plt
 from sklearn.datasets import fetch_openml
 from sklearn.decomposition import PCA
 
-# Import the MMD and Pearson models
-from model.owcl_mmd import OWR_CPD
-from model.owcl_pearson import PearsonOWRCPD
+from experiments.calibration import calibrate_thresholds, print_calibration
+from experiments.runner import labels_for_segments, run_comparison
 
+N = 150
+M = 40
+K_CONF = 6
+SAMPLES_PER_DIGIT = 300
+PCA_DIM = 50
+MMD_ETA = 0.06
+MMD_NU = 0.96
+SEQUENCES = {
+    'A': (3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5),
+    'B': (4, 9, 4, 8, 3, 8, 9, 3, 4, 8, 3),
+}
+
+# Explicit choices for details not supplied by the paper. These partitions
+# are disjoint; neither PCA nor thresholds use evaluation images.
+PCA_IMAGES_PER_DIGIT = 500
+CALIBRATION_IMAGES_PER_DIGIT = 1500
+SPLIT_SEED = 2027
+EVALUATION_SEED = 42
+CALIBRATION_SEED = 10020
+CALIBRATION_REPEATS = 12
+REG_LAMBDA = 0.1
+PEARSON_TAU = None
+PEARSON_NU = None
+MAX_DELAY = M + K_CONF
+# fetch_openml appends its own 'openml' subdirectory to data_home.
+DATA_HOME = Path(__file__).resolve().parent / 'data'
+
+
+def load_mnist_partitions(pca_per_digit=PCA_IMAGES_PER_DIGIT,
+                          calibration_per_digit=CALIBRATION_IMAGES_PER_DIGIT,
+                          seed=SPLIT_SEED):
+    print('Loading MNIST and reserving disjoint PCA, calibration, and evaluation images...')
+    X, y = fetch_openml('mnist_784', version=1, return_X_y=True,
+                       as_frame=False, parser='auto', data_home=str(DATA_HOME))
+    X, y = np.asarray(X, dtype=float) / 255.0, np.asarray(y).astype(int)
+    rng = np.random.RandomState(seed)
+    preprocessing, calibration, evaluation = [], {}, {}
+    for digit in sorted(set(y)):
+        indices = rng.permutation(np.flatnonzero(y == digit))
+        split = pca_per_digit + calibration_per_digit
+        if len(indices) <= split:
+            raise ValueError(f'Digit {digit} has too few images for the requested disjoint splits')
+        preprocessing.append(X[indices[:pca_per_digit]])
+        calibration[int(digit)] = X[indices[pca_per_digit:split]]
+        evaluation[int(digit)] = X[indices[split:]]
+    return np.vstack(preprocessing), calibration, evaluation
+
+
+def build_mnist_stream(sequence, evaluation_pools, samples_per_digit=300, offsets=None):
+    """Consume fresh images; shared offsets also prevent reuse across A and B."""
+    if not sequence or samples_per_digit < 1:
+        raise ValueError('Provide a nonempty sequence and positive segment length')
+    offsets = {} if offsets is None else offsets
+    for digit in set(sequence):
+        needed = offsets.get(digit, 0) + sequence.count(digit) * samples_per_digit
+        if digit not in evaluation_pools or len(evaluation_pools[digit]) < needed:
+            raise ValueError(f'Digit {digit} needs {needed} distinct evaluation images')
+    segments, cps = [], []
+    for i, digit in enumerate(sequence):
+        start = offsets.get(digit, 0)
+        segments.append(evaluation_pools[digit][start:start + samples_per_digit])
+        offsets[digit] = start + samples_per_digit
+        if i and digit != sequence[i - 1]:
+            cps.append(i * samples_per_digit)
+    return np.vstack(segments), cps
 
 
 def generate_mnist_stream(sequence, samples_per_digit=300):
-    """
-    Downloads MNIST and builds a sequential stream based on the provided digit sequence.
-    """
-    print("Loading MNIST dataset (this may take a moment)...")
-    X, y = fetch_openml('mnist_784', version=1, return_X_y=True, as_frame=False, parser='auto')
-    
-    # Normalize pixel values to [0, 1]
-    X = X / 255.0 
-    y = y.astype(int)
-    
-    if not sequence or samples_per_digit < 1:
-        raise ValueError("Provide a nonempty sequence and positive segment length")
-    rng = np.random.RandomState(42)
-    pools = {}
-    offsets = {}
-    for digit in sorted(set(sequence)):
-        indices = np.flatnonzero(y == digit)
-        needed = sequence.count(digit) * samples_per_digit
-        if len(indices) < needed:
-            raise ValueError(f"Digit {digit} needs {needed} distinct images; only {len(indices)} available")
-        pools[digit] = rng.permutation(indices)
-        offsets[digit] = 0
-    stream = []
-    actual_cps = []
-    current_len = 0
-    
-    print(f"Building stream for sequence: {sequence}")
-    for idx, digit in enumerate(sequence):
-        start = offsets[digit]
-        selected_indices = pools[digit][start:start + samples_per_digit]
-        offsets[digit] += samples_per_digit
-        segment = X[selected_indices]
+    """Compatibility helper; the main below loads/splits the dataset only once."""
+    _, _, pools = load_mnist_partitions()
+    return build_mnist_stream(sequence, pools, samples_per_digit)
 
-        stream.extend(segment)
-        current_len += samples_per_digit
-        
-        if idx < len(sequence) - 1 and digit != sequence[idx + 1]:
-            actual_cps.append(current_len)
-            
-    return np.array(stream), actual_cps
 
-def main():
-    # ==========================================
-    # EXPERIMENT SETUP
-    # ==========================================
-    # The paper tests two specific sequences:
-    SEQ_A = [3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5] #[0,1,2,1,3,4,5,6,3,0,3]
-    SEQ_B = [4, 9, 4, 8, 3, 8, 9, 3, 4, 8, 3] #[0,1,0,2,3,2,1,3,0,2,3]
-    
-    TARGET_SEQ = SEQ_B 
-    USE_PCA = True  # Toggle this to False to test raw 784D space
-    PCA_DIM = 50
-    
-    # Paper parameters (Section 5.3)
-    n = 150
-    m = 40
-    k_conf = 6
-    gamma = 1.0            # RBF kernel bandwidth
-    dynamic_gamma = True   # Use dynamic gamma adjustment
-    normalize_distance = True  
-    
-    # Generate the raw stream
-    raw_data, actual_cps = generate_mnist_stream(TARGET_SEQ, samples_per_digit=300)
-    
-    if USE_PCA:
-        print(f"Applying PCA to reduce dimensions to d={PCA_DIM}...")
-        pca = PCA(n_components=PCA_DIM, random_state=42)
-        # Fit on the initial reference window only, before monitoring starts.
-        pca.fit(raw_data[:n])
-        data = pca.transform(raw_data)
-    else:
-        print("Using raw 784-dimensional pixel space...")
-        data = raw_data
+def main(show=True):
+    preprocessing, calibration_pools, evaluation_pools = load_mnist_partitions()
+    print(f'Fitting PCA(d={PCA_DIM}) on separate preprocessing images...')
+    pca = PCA(n_components=PCA_DIM, random_state=SPLIT_SEED)
+    pca.fit(preprocessing)
+    calibration_pools = {digit: pca.transform(images)
+                         for digit, images in calibration_pools.items()}
+    # Identical PCA coordinates and Euclidean distances for both models.
+    rng = np.random.RandomState(EVALUATION_SEED)
+    evaluation_pools = {digit: images[rng.permutation(len(images))]
+                        for digit, images in evaluation_pools.items()}
 
-    total_length = len(data)
-    
-    # ==========================================
-    # INITIALIZE MODELS
-    # ==========================================
-    mmd_model = OWR_CPD(
-        n=n, 
-        m=m, 
-        eta=0.06,   # Paper calibrated detection threshold
-        nu=0.96,    # Paper calibrated novelty threshold
-        k_conf=k_conf,
-        gamma=gamma,
-        dynamic_gamma=dynamic_gamma
-    )
-    
-    pearson_model = PearsonOWRCPD(
-        n=n, 
-        m=m, 
-        tau=0.46, 
-        nu=0.71, 
-        k_conf=k_conf, 
-        reg_lambda=10,
-        gamma=gamma,
-        factor=1.0,
-        dynamic_gamma=dynamic_gamma,
-        normalize_distance=normalize_distance
-    )
+    def sample(label, size, calibration_rng):
+        pool = calibration_pools[label]
+        if size > len(pool):
+            raise ValueError('Increase CALIBRATION_IMAGES_PER_DIGIT')
+        return pool[calibration_rng.choice(len(pool), size=size, replace=False)]
 
-    # ==========================================
-    # RUN STREAMING SIMULATION
-    # ==========================================
-    print(f"Starting concurrent monitoring (Total steps: {total_length})...")
-    mmd_scores, pearson_scores = [], []
-    
-    for t in range(total_length):
-        mmd_scores.append(mmd_model.update(data[t]))
-        pearson_scores.append(pearson_model.update(data[t]))
+    digits = sorted({digit for sequence in SEQUENCES.values() for digit in sequence})
+    calibration = calibrate_thresholds(
+        sample, digits, n=N, m=M, k_conf=K_CONF, reg_lambda=REG_LAMBDA,
+        seed=CALIBRATION_SEED, repeats=CALIBRATION_REPEATS, names=('Pearson',))
+    overrides = {'Pearson': dict(detection=PEARSON_TAU, novelty=PEARSON_NU)}
+    print(f'MMD paper settings: eta={MMD_ETA}, nu={MMD_NU}')
+    print_calibration(calibration, overrides)
+    thresholds = {'MMD': dict(detection=MMD_ETA, novelty=MMD_NU),
+                  'Pearson': {key: calibration['Pearson'][key] if value is None else value
+                              for key, value in overrides['Pearson'].items()}}
+    offsets, results = {}, {}
+    for name, sequence in SEQUENCES.items():
+        raw, cps = build_mnist_stream(sequence, evaluation_pools, SAMPLES_PER_DIGIT, offsets)
+        data = pca.transform(raw)
+        results[name] = run_comparison(
+            data, cps, labels_for_segments(sequence, SAMPLES_PER_DIGIT),
+            title=f'MNIST sequence {name}', n=N, m=M, k_conf=K_CONF,
+            thresholds=thresholds, reg_lambda=REG_LAMBDA,
+            max_delay=MAX_DELAY, show=show)
+    return dict(calibration=calibration, sequences=results)
 
-    # ==========================================
-    # REPORTING & VISUALIZATION
-    # ==========================================
-    print("\n" + "="*50)
-    print(f"  MNIST EXPERIMENT (PCA={USE_PCA})")
-    print("="*50)
-    print(f"\n GROUND TRUTH Sequence: {' -> '.join(map(str, TARGET_SEQ))}")
-    print(f" True Change Points   : {actual_cps}")
 
-    models = [
-        ("MMD", mmd_model, mmd_scores, "teal"),
-        ("PEARSON", pearson_model, pearson_scores, "purple"),
-    ]
-
-    for name, model, scores, color in models:
-        print(f"\n {name} OWR MODEL")
-        print_detection_summary(actual_cps, model)
-    print("="*50)
-
-    fig, axes = plt.subplots(2, 1, figsize=(12, 7), sharex=True)
-    fig.suptitle(f"MNIST Digit Stream (PCA={USE_PCA})", fontsize=14)
-
-    for ax, (name, model, scores, color) in zip(axes, models):
-        ax.plot(scores, color=color, linewidth=1.2, label=f"{name} Score")
-        thresh = getattr(model, 'eta', getattr(model, 'tau', 0.1))
-        ax.axhline(y=thresh, color="orange", linestyle="--", label="Detection Threshold")
-        
-        for cp in actual_cps:
-            ax.axvline(x=cp, color="black", linestyle=":", alpha=0.5, linewidth=1.5)
-        for cp in detection_indices(model):
-            ax.axvline(x=cp, color="red", linestyle="-", linewidth=1.5)
-            
-        ax.set_title(f"{name} OWR-CPD Model")
-        ax.legend(loc="upper left")
-
-    axes[-1].set_xlabel("Time Step (t)")
-    plt.tight_layout()
-    plt.show()
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

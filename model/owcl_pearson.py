@@ -135,6 +135,7 @@ class PearsonOWRCPD:
         self.global_changepoints = []
         self.pearson_div_scores = []
         self.regime_log = []
+        self.recognition_log = []
 
     def _sq_distances_v0(self, X, Y):
         return squared_distances(X, Y, normalize=False)
@@ -210,6 +211,11 @@ class PearsonOWRCPD:
                     'mu_K': mu_K_init, 
                     'gamma': gamma_init
                 })
+                self.recognition_log.append({
+                    'time': self.t, 'regime': 0, 'is_new': True,
+                    'alarm_time': None, 'batch_start': 0, 'batch_end': self.t,
+                    'gamma': gamma_init,
+                })
                 
                 self.active_W = W_init.copy()
                 self.active_mu_K = mu_K_init.copy()
@@ -224,6 +230,9 @@ class PearsonOWRCPD:
             if len(self.Y) == self.m:
                 self.active_h = np.mean(self._rbf_kernel(self.X, self.Y), axis=1)
                 self.state = "ACTIVE"
+                score = pearson_score(
+                    self, self.Y, self.X, self.active_W, self.active_mu_K,
+                    self.gamma, h=self.active_h)
                 
         # --- PHASE 3: Active Monitoring (Recursive Sliding Window) ---
         elif self.state == "ACTIVE":
@@ -258,20 +267,6 @@ class PearsonOWRCPD:
                 self, self.Y, self.X, self.active_W, self.active_mu_K,
                 self.gamma, h=self.active_h)
             
-            if score > self.tau:
-                self.consec += 1
-            else:
-                self.consec = 0
-                
-            if self.consec >= self.k_conf:
-                cp_time = self.t
-                self.global_changepoints.append(cp_time)
-                print(f"\nTime {cp_time} (detected at {self.t}): *** CHANGE CONFIRMED *** (Div={score:.4f} > {self.tau})")
-                
-                self.consec = 0
-                self.X_prime = []
-                self.state = "COLLECT_PURE_WINDOW"
-                
         # --- PHASE 4: OWR Classification ---
         elif self.state == "COLLECT_PURE_WINDOW":
             self.X_prime.append(x)
@@ -279,6 +274,9 @@ class PearsonOWRCPD:
             
             if len(self.X_prime) == self.n:
                 print(f"\n  [Classification Phase @ Time {self.t}]")
+                # Tune gamma first, then compute the new mean and operator.
+                # Scores against old regimes still use their stored bandwidths.
+                new_W, new_mu_K, new_gamma = self._compute_full_W_and_update_gamma(self.X_prime)
                 div_scores = []
                 
                 for i, regime in enumerate(self.regimes):
@@ -293,8 +291,6 @@ class PearsonOWRCPD:
                     best_i = -1
                     min_div = float('inf')
                         
-                new_W, new_mu_K, new_gamma = self._compute_full_W_and_update_gamma(self.X_prime) 
-                
                 if min_div <= self.nu:
                     print(f"  -> RESULT: Assigned to KNOWN Regime {best_i} (Min Div = {min_div:.4f} <= {self.nu})\n")
                     self.active_regime_id = best_i
@@ -314,6 +310,14 @@ class PearsonOWRCPD:
                         'mu_K': new_mu_K, 
                         'gamma': new_gamma
                     })
+
+                self.recognition_log.append({
+                    'time': self.t, 'regime': int(self.active_regime_id),
+                    'is_new': bool(min_div > self.nu),
+                    'alarm_time': self.global_changepoints[-1],
+                    'batch_start': self.t - self.n, 'batch_end': self.t,
+                    'gamma': new_gamma,
+                })
                 
                 self.X = list(self.X_prime)
                 self.active_W = new_W.copy()
@@ -321,5 +325,14 @@ class PearsonOWRCPD:
                 self.Y = []
                 self.state = "WARMUP_Y"
                 
+        if np.isfinite(score):
+            self.consec = self.consec + 1 if score > self.tau else 0
+            if self.consec >= self.k_conf:
+                self.global_changepoints.append(self.t)
+                print(f"\nTime {self.t}: *** CHANGE CONFIRMED *** (Div={score:.4f} > {self.tau})")
+                self.consec = 0
+                self.X_prime = []
+                self.state = "COLLECT_PURE_WINDOW"
+
         self.pearson_div_scores.append(score)
         return score
