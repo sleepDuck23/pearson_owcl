@@ -2,11 +2,8 @@
 
 import numpy as np
 
-# Re-export helpers used by the extra PAMAP2 and WISDM entry points.
-from experiments.evaluation import (
-    calculate_delays, detection_indices, evaluate_changepoints,
-    get_regime_sequence, print_detection_summary,
-)
+from model.owcl_mmd import OWR_CPD
+from model.owcl_pearson import PearsonOWRCPD
 from experiments.runner import labels_for_segments, run_comparison, validate_thresholds
 
 N = 150
@@ -25,20 +22,49 @@ PEARSON_NU = 0.7  # Arbitrary placeholder; adjust for this experiment.
 MAX_DELAY = M + K_CONF
 
 
+def build_models():
+    """Edit every model parameter here; the shared runner uses these instances as-is."""
+    return {
+        'MMD': OWR_CPD(
+            n=N,
+            m=M,
+            eta=MMD_ETA,
+            nu=MMD_NU,
+            k_conf=K_CONF,
+            gamma=0.1,
+            factor=1.0,
+            dynamic_gamma=True,
+        ),
+        'Pearson': PearsonOWRCPD(
+            n=N,
+            m=M,
+            tau=PEARSON_TAU,
+            nu=PEARSON_NU,
+            k_conf=K_CONF,
+            reg_lambda=REG_LAMBDA,
+            gamma=0.1,
+            factor=1.0,
+            dynamic_gamma=True,
+            normalize_distance=False,
+        ),
+    }
+
+
 def main(show=True):
     def sample(label, size, rng):
         return rng.normal(MEANS[label - 1], STDS[label - 1], (size, 1))
 
-    thresholds = {'MMD': dict(detection=MMD_ETA, novelty=MMD_NU),
-                  'Pearson': dict(detection=PEARSON_TAU, novelty=PEARSON_NU)}
-    validate_thresholds(thresholds, REG_LAMBDA)
+    models = build_models()
+    validate_thresholds(
+        {'MMD': dict(detection=models['MMD'].eta, novelty=models['MMD'].nu),
+         'Pearson': dict(detection=models['Pearson'].tau, novelty=models['Pearson'].nu)},
+        models['Pearson'].reg_lambda)
     rng = np.random.RandomState(SEED)
     data = np.concatenate([sample(label, SEGMENT_LENGTH, rng) for label in SEQUENCE]).ravel()
     cps = list(range(SEGMENT_LENGTH, len(data), SEGMENT_LENGTH))
     return run_comparison(
         data, cps, labels_for_segments(SEQUENCE, SEGMENT_LENGTH),
-        title=f'Gaussian reference, seed={SEED}', n=N, m=M, k_conf=K_CONF,
-        thresholds=thresholds, reg_lambda=REG_LAMBDA,
+        title=f'Gaussian reference, seed={SEED}', models=models,
         max_delay=MAX_DELAY, show=show, seed=SEED)
 
 

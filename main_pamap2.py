@@ -4,6 +4,8 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from data.manage_pamap2 import load_pamap2_full_blocks
+from model.owcl_mmd import OWR_CPD
+from model.owcl_pearson import PearsonOWRCPD
 from experiments.runner import labels_for_segments, run_comparison
 
 N = 200
@@ -43,7 +45,36 @@ def build_stream(sequence, activities, block_size):
         current_step += len(block)
     return np.vstack(stream), true_cps
 
+def build_models():
+    """Edit every model parameter here; the shared runner uses these instances as-is."""
+    return {
+        'MMD': OWR_CPD(
+            n=N,
+            m=M,
+            eta=MMD_ETA,
+            nu=MMD_NU,
+            k_conf=K_CONF,
+            gamma=0.1,
+            factor=1.0,
+            dynamic_gamma=True,
+        ),
+        'Pearson': PearsonOWRCPD(
+            n=N,
+            m=M,
+            tau=PEARSON_TAU,
+            nu=PEARSON_NU,
+            k_conf=K_CONF,
+            reg_lambda=REG_LAMBDA,
+            gamma=0.1,
+            factor=1.0,
+            dynamic_gamma=True,
+            normalize_distance=False,
+        ),
+    }
+
+
 def run_experiment(show=True):
+    models = build_models()
     counts = {act: SEQUENCE.count(act) for act in set(SEQUENCE)}
     activities, block_size = load_pamap2_full_blocks(
         block_size=1500, blocks_per_activity=counts)
@@ -56,10 +87,7 @@ def run_experiment(show=True):
     # threshold. Do not silently retune parameters using evaluation truth.
     return run_comparison(
         processed, true_cps, labels, title='PAMAP2 subject101',
-        n=N, m=M, k_conf=K_CONF,
-        thresholds={'MMD': dict(detection=MMD_ETA, novelty=MMD_NU),
-                    'Pearson': dict(detection=PEARSON_TAU, novelty=PEARSON_NU)},
-        reg_lambda=REG_LAMBDA, max_delay=MAX_DELAY, show=show,
+        models=models, max_delay=MAX_DELAY, show=show,
         check_score_bounds=False)
 
 

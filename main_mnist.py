@@ -5,6 +5,8 @@ import numpy as np
 from sklearn.datasets import fetch_openml
 from sklearn.decomposition import PCA
 
+from model.owcl_mmd import OWR_CPD
+from model.owcl_pearson import PearsonOWRCPD
 from experiments.runner import labels_for_segments, run_comparison, validate_thresholds
 
 N = 150
@@ -73,10 +75,40 @@ def generate_mnist_stream(sequence, samples_per_digit=300):
     return build_mnist_stream(sequence, pools, samples_per_digit)
 
 
+def build_models():
+    """Edit every model parameter here; the shared runner uses these instances as-is."""
+    return {
+        'MMD': OWR_CPD(
+            n=N,
+            m=M,
+            eta=MMD_ETA,
+            nu=MMD_NU,
+            k_conf=K_CONF,
+            gamma=0.1,
+            factor=1.0,
+            dynamic_gamma=True,
+        ),
+        'Pearson': PearsonOWRCPD(
+            n=N,
+            m=M,
+            tau=PEARSON_TAU,
+            nu=PEARSON_NU,
+            k_conf=K_CONF,
+            reg_lambda=REG_LAMBDA,
+            gamma=0.1,
+            factor=1.0,
+            dynamic_gamma=True,
+            normalize_distance=False,
+        ),
+    }
+
+
 def main(show=True):
-    thresholds = {'MMD': dict(detection=MMD_ETA, novelty=MMD_NU),
-                  'Pearson': dict(detection=PEARSON_TAU, novelty=PEARSON_NU)}
-    validate_thresholds(thresholds, REG_LAMBDA)
+    models = build_models()
+    validate_thresholds(
+        {'MMD': dict(detection=models['MMD'].eta, novelty=models['MMD'].nu),
+         'Pearson': dict(detection=models['Pearson'].tau, novelty=models['Pearson'].nu)},
+        models['Pearson'].reg_lambda)
     preprocessing, evaluation_pools = load_mnist_partitions()
     print(f'Fitting PCA(d={PCA_DIM}) on separate preprocessing images...')
     pca = PCA(n_components=PCA_DIM, random_state=SPLIT_SEED)
@@ -87,13 +119,14 @@ def main(show=True):
                         for digit, images in evaluation_pools.items()}
 
     offsets, results = {}, {}
-    for name, sequence in SEQUENCES.items():
+    for index, (name, sequence) in enumerate(SEQUENCES.items()):
+        if index:
+            models = build_models()
         raw, cps = build_mnist_stream(sequence, evaluation_pools, SAMPLES_PER_DIGIT, offsets)
         data = pca.transform(raw)
         results[name] = run_comparison(
             data, cps, labels_for_segments(sequence, SAMPLES_PER_DIGIT),
-            title=f'MNIST sequence {name}', n=N, m=M, k_conf=K_CONF,
-            thresholds=thresholds, reg_lambda=REG_LAMBDA,
+            title=f'MNIST sequence {name}', models=models,
             max_delay=MAX_DELAY, show=show, seed=EVALUATION_SEED)
     return dict(sequences=results)
 

@@ -50,9 +50,8 @@ def save_reports(report, output_dir):
              'No thresholds were tuned for this evaluation. Several configured thresholds are arbitrary '
              'placeholders, so these results evaluate the checked-in settings rather than establish '
              'a tuned model comparison or an exact reproduction of ICASSP results.', '',
-             'WISDM is a synthetic activity surrogate, not WISDM recordings. PAMAP2 retains '
-             'lambda=20 and Pearson detection threshold 0.80; its score is bounded by 0.05, '
-             'so that configuration cannot confirm alarms.', '',
+             'WISDM is a synthetic activity surrogate, not WISDM recordings. '
+             'Model parameters are set explicitly in each experiment main.', '',
              'Reproduce with `MPLBACKEND=Agg python3 -m experiments.benchmark`. '
              'Full settings, stream fingerprints, episode boundaries, decisions, and per-run scores '
              'are saved in `benchmark_results.json`.', '']
@@ -63,9 +62,15 @@ def save_reports(report, output_dir):
         thresholds = benchmark['runs'][0]['thresholds']
         lines += [f'## {title}', '',
                   f"{len(configs)} paired stream(s); seeds: {seeds}. "
-                  f"Alarm tolerance: **{settings['max_delay']} samples**. "
-                  f"n={settings['n']}, m={settings['m']}, k={settings['k_conf']}; "
-                  f"Pearson lambda={settings['reg_lambda']}.", '',
+                  f"Alarm tolerance: **{settings['max_delay']} samples**.", '']
+        for name, parameters in settings['model_parameters'].items():
+            lines += [f"{name}: " + ', '.join(f'{key}={value}' for key, value in parameters.items()) + '.', '']
+        pearson = settings['model_parameters']['Pearson']
+        bound = 1 / pearson['reg_lambda']
+        if pearson['tau'] >= bound:
+            lines += [f"Pearson detection threshold {pearson['tau']} exceeds or equals its score bound "
+                      f"{bound:g}; this configuration cannot confirm alarms.", '']
+        lines += [
                   f"MMD detection/novelty: {thresholds['MMD']['detection']}/"
                   f"{thresholds['MMD']['novelty']}; Pearson detection/novelty: "
                   f"{thresholds['Pearson']['detection']}/{thresholds['Pearson']['novelty']}.", '',

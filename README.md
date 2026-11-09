@@ -58,10 +58,24 @@ no master T script to run first; the old `main_T_exp.py` shortcut has been remov
 The shared modules provide reusable functions, without starting experiments when
 imported.
 
-Before running, adjust the parameters in the selected script. The Gaussian,
-T1/T2/T3, and MNIST mains keep their parameters as named constants at the top.
-PAMAP2 and WISDM also expose their configurations as named constants. Values marked as arbitrary placeholders
-are starting values, not tuned settings.
+Before running, edit `build_models()` in the selected main file. It contains
+explicit `OWR_CPD(...)` and `PearsonOWRCPD(...)` constructor calls with every model
+parameter visible: window sizes, confirmation count, thresholds, `gamma`,
+`factor`, `dynamic_gamma`, and Pearson's `reg_lambda` and `normalize_distance`.
+The named constants at the top supply the default experiment settings. You can
+change those constants or edit either constructor argument independently.
+Values marked as arbitrary placeholders are starting values, not tuned settings.
+
+For example, in `main_mmd_pearson.py`, set `gamma=0.25` and
+`dynamic_gamma=False` in a model's constructor to use a fixed bandwidth. With
+`dynamic_gamma=True`, the model estimates gamma from each representative batch;
+`factor` controls the scale of that estimate.
+
+The shared runner receives your model instances without constructing or
+reconfiguring them. Each repeated stream and MNIST sequence gets a fresh pair.
+`MAX_DELAY` sets the common scoring tolerance independently of model parameters.
+Saved JSON records each model's actual constructor settings under
+`config.model_parameters`, including its gamma before streaming updates.
 
 For the Gaussian, T1/T2/T3, and MNIST experiments, disable plotting with
 `main(show=False)`. For example:
@@ -150,7 +164,7 @@ mathematical background.
 
 | File | Objective and behavior |
 |---|---|
-| [main_mmd_pearson.py](main_mmd_pearson.py) | Gaussian reference example with four regimes in the sequence `1 → 2 → 3 → 2 → 1 → 4`. Generates observations, supplies manual thresholds, and invokes the shared comparison runner. Also re-exports evaluation helpers currently imported by the activity scripts; importing them does not run this experiment. |
+| [main_mmd_pearson.py](main_mmd_pearson.py) | Gaussian reference example with four regimes in the sequence `1 → 2 → 3 → 2 → 1 → 4`. Generates observations, constructs both models explicitly in `build_models()`, and invokes the shared comparison runner. Importing it does not run the experiment. |
 | [main_T1.py](main_T1.py) | Compares Gaussian, Laplace, exponential, and uniform families with distinct means and a common variance. Owns its parameters and runs its three seeds independently. |
 | [main_T2.py](main_T2.py) | Compares the same families with a common mean and distinct variances. Owns its parameters and runs its three seeds independently. |
 | [main_T3.py](main_T3.py) | Compares the same families with common population mean and variance, so differences concern distribution shape. Owns its parameters and runs its three seeds independently. |
@@ -193,7 +207,7 @@ classical Pearson divergence.
 
 | File | Objective and behavior |
 |---|---|
-| [runner.py](experiments/runner.py) | Constructs either detector from supplied parameters, validates manual thresholds, expands segment labels, feeds identical observations to both models, prints summaries, aggregates repeated runs, and plots scores and regime IDs. It never estimates thresholds. |
+| [runner.py](experiments/runner.py) | Accepts models constructed by the experiment main, validates manual thresholds, expands segment labels, feeds identical observations to both models, records their actual settings, prints summaries, aggregates repeated runs, and plots scores and regime IDs. It does not construct models or override their parameters. |
 | [evaluation.py](experiments/evaluation.py) | Scores confirmed alarms and timely matched-alarm assignments using a chronological one-to-one mapping, excludes warm-up from assignment scores, and pools counts and delays across runs. |
 | [benchmark.py](experiments/benchmark.py) | Runs all configured benchmarks without plots and saves side-by-side Markdown tables plus JSON containing configurations, stream hashes, raw events, per-episode decisions, and aggregate metrics. |
 

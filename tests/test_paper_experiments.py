@@ -7,12 +7,19 @@ from unittest.mock import patch
 
 import numpy as np
 
-from experiments.runner import make_model
 from experiments.evaluation import evaluate_changepoints, evaluate_recognition
 from data.generation import generate_moment_matched_stream
 from model.owcl_mmd import OWR_CPD
 from model.owcl_pearson import PearsonOWRCPD
 from main_mnist import build_mnist_stream, load_mnist_partitions
+
+
+def make_model(name, n, m, k_conf, detection, novelty, reg_lambda=0.1):
+    """Small-model convenience for algorithm tests, not experiment configuration."""
+    common = dict(n=n, m=m, k_conf=k_conf)
+    if name == 'MMD':
+        return OWR_CPD(eta=detection, nu=novelty, **common)
+    return PearsonOWRCPD(tau=detection, nu=novelty, reg_lambda=reg_lambda, **common)
 
 
 class ModelTests(unittest.TestCase):
@@ -207,35 +214,70 @@ class EvaluationTests(unittest.TestCase):
 class ExperimentTests(unittest.TestCase):
     def test_runner_pairs_observations_and_model_rng_without_passing_truth(self):
         from experiments.runner import run_comparison
-        observations, draws = {}, {}
+        observations, draws, models = {}, {}, {}
 
-        def factory(name, n, m, k_conf, detection, novelty, reg_lambda):
+        def prepare(name):
             observations[name], draws[name] = [], []
-            model = SimpleNamespace(n=n, t=0, global_changepoints=[], recognition_log=[])
+            model = make_model(name, 3, 2, 1, 0.5, 0.5)
+            original_update = model.update
 
             def update(x):
                 observations[name].append(float(x))
                 draws[name].append(np.random.random())
-                model.t += 1
-                if model.t == n:
-                    model.recognition_log.append(dict(time=n, regime=37, is_new=True,
-                                                      alarm_time=None))
+                return original_update(x)
 
             model.update = update
             return model
 
-        with patch('experiments.runner.make_model', side_effect=factory):
-            with contextlib.redirect_stdout(io.StringIO()):
-                result = run_comparison(
-                    np.arange(20), [10], np.repeat([901, 402], 10), title='paired',
-                    n=3, m=2, k_conf=1, reg_lambda=0.1, max_delay=4, seed=73, show=False,
-                    thresholds={'MMD': dict(detection=0.1, novelty=0.9),
-                                'Pearson': dict(detection=0.4, novelty=0.7)})
+        models = {name: prepare(name) for name in ('MMD', 'Pearson')}
+        with contextlib.redirect_stdout(io.StringIO()):
+            result = run_comparison(
+                np.arange(20), [10], np.repeat([901, 402], 10), title='paired',
+                models=models, max_delay=4, seed=73, show=False)
         self.assertEqual(observations['MMD'], observations['Pearson'])
         self.assertEqual(observations['MMD'], list(range(20)))
         self.assertEqual(draws['MMD'], draws['Pearson'])
-        self.assertEqual(result['metrics']['MMD']['mapping'], {901: 37})
+        self.assertEqual(result['metrics']['MMD']['mapping'][901], 0)
         self.assertEqual(result['config']['seed'], 73)
+        for name, model in models.items():
+            self.assertIs(result['models'][name], model)
+
+    def test_main_uses_supplied_constructor_settings_and_records_them(self):
+        import main_mmd_pearson
+        models = {
+            'MMD': OWR_CPD(n=8, m=3, eta=0.11, nu=0.82, k_conf=2,
+                           gamma=0.25, factor=1.75, dynamic_gamma=False),
+            'Pearson': PearsonOWRCPD(n=6, m=2, tau=0.42, nu=0.72, k_conf=1,
+                                     reg_lambda=0.2, gamma=0.7, factor=2.25,
+                                     dynamic_gamma=False, normalize_distance=True),
+        }
+        with patch.object(main_mmd_pearson, 'build_models', return_value=models):
+            with patch.object(main_mmd_pearson, 'SEGMENT_LENGTH', 20):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    result = main_mmd_pearson.main(show=False)
+        for name, model in models.items():
+            self.assertIs(result['models'][name], model)
+            self.assertEqual(model.t, 120)
+        settings = result['config']['model_parameters']
+        self.assertEqual(settings['MMD'], dict(n=8, m=3, eta=0.11, nu=0.82,
+                                              k_conf=2, gamma=0.25, factor=1.75,
+                                              dynamic_gamma=False))
+        self.assertEqual(settings['Pearson'], dict(n=6, m=2, tau=0.42, nu=0.72,
+                                                  k_conf=1, reg_lambda=0.2, gamma=0.7,
+                                                  factor=2.25, dynamic_gamma=False,
+                                                  normalize_distance=True))
+        self.assertEqual(models['MMD'].gamma, 0.25)
+        self.assertEqual(models['Pearson'].gamma, 0.7)
+
+    def test_runner_rejects_reused_models_before_streaming_either(self):
+        from experiments.runner import run_comparison
+        models = {name: make_model(name, 3, 2, 1, 0.5, 0.5)
+                  for name in ('MMD', 'Pearson')}
+        models['Pearson'].update(0)
+        with self.assertRaisesRegex(ValueError, 'fresh model'):
+            run_comparison(np.arange(20), [], np.zeros(20), title='reused',
+                           models=models, max_delay=4, show=False)
+        self.assertEqual(models['MMD'].t, 0)
 
     def test_activity_entrypoints_use_shared_assignment_scores(self):
         import main_wisdm, main_pamap2
@@ -285,12 +327,11 @@ class ExperimentTests(unittest.TestCase):
 
     def test_impossible_pearson_threshold_is_rejected(self):
         from experiments.runner import run_comparison
-        thresholds = {'MMD': dict(detection=0.1, novelty=0.9),
-                      'Pearson': dict(detection=0.46, novelty=0.71)}
+        models = {'MMD': make_model('MMD', 4, 2, 2, 0.1, 0.9),
+                  'Pearson': make_model('Pearson', 4, 2, 2, 0.46, 0.71, reg_lambda=10)}
         with contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(ValueError, 'score bound'):
             run_comparison(np.arange(20), [], np.zeros(20), title='invalid',
-                           n=4, m=2, k_conf=2, thresholds=thresholds,
-                           reg_lambda=10, max_delay=4, show=False)
+                           models=models, max_delay=4, show=False)
 
     def test_paper_lengths_and_windows(self):
         import main_T1, main_T2, main_T3, main_mmd_pearson

@@ -1,6 +1,8 @@
 """ICASSP section 5.2, T2: common mean and distinct variances."""
 
 from data.generation import generate_moment_matched_stream
+from model.owcl_mmd import OWR_CPD
+from model.owcl_pearson import PearsonOWRCPD
 from experiments.runner import labels_for_segments, print_aggregate, run_comparison, validate_thresholds
 
 # Reported paper settings: 700 observations per segment, three streams.
@@ -21,18 +23,49 @@ REG_LAMBDA = 0.1                # Pearson extension, not a reported ICASSP value
 MAX_DELAY = M + K_CONF          # Explicit evaluation horizon, not a paper setting.
 
 
+def build_models():
+    """Edit every model parameter here; the shared runner uses these instances as-is."""
+    return {
+        'MMD': OWR_CPD(
+            n=N,
+            m=M,
+            eta=MMD_ETA,
+            nu=MMD_NU,
+            k_conf=K_CONF,
+            gamma=0.1,
+            factor=1.0,
+            dynamic_gamma=True,
+        ),
+        'Pearson': PearsonOWRCPD(
+            n=N,
+            m=M,
+            tau=PEARSON_TAU,
+            nu=PEARSON_NU,
+            k_conf=K_CONF,
+            reg_lambda=REG_LAMBDA,
+            gamma=0.1,
+            factor=1.0,
+            dynamic_gamma=True,
+            normalize_distance=False,
+        ),
+    }
+
+
 def main(show=True):
-    thresholds = {'MMD': dict(detection=MMD_ETA, novelty=MMD_NU),
-                  'Pearson': dict(detection=PEARSON_TAU, novelty=PEARSON_NU)}
-    validate_thresholds(thresholds, REG_LAMBDA)
+    models = build_models()
+    validate_thresholds(
+        {'MMD': dict(detection=models['MMD'].eta, novelty=models['MMD'].nu),
+         'Pearson': dict(detection=models['Pearson'].tau, novelty=models['Pearson'].nu)},
+        models['Pearson'].reg_lambda)
     runs = []
-    for seed in SEEDS:
+    for index, seed in enumerate(SEEDS):
+        if index:
+            models = build_models()
         data, cps, sequence = generate_moment_matched_stream(
             'T2', SEGMENT_LENGTH, seed, MEANS, STDS)
         runs.append(run_comparison(
             data, cps, labels_for_segments(sequence, SEGMENT_LENGTH),
-            title=f'T2, seed={seed}', n=N, m=M, k_conf=K_CONF,
-            thresholds=thresholds, reg_lambda=REG_LAMBDA,
+            title=f'T2, seed={seed}', models=models,
             max_delay=MAX_DELAY, show=show, seed=seed))
     print_aggregate(runs)
     return dict(runs=runs)
