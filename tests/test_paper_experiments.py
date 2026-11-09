@@ -7,9 +7,9 @@ from unittest.mock import patch
 
 import numpy as np
 
-from experiments.calibration import calibrate_thresholds, make_model
+from experiments.runner import make_model
 from experiments.evaluation import evaluate_changepoints, evaluate_recognition
-from experiments.moment_matched import generate_moment_matched_stream
+from data.generation import generate_moment_matched_stream
 from model.owcl_mmd import OWR_CPD
 from model.owcl_pearson import PearsonOWRCPD
 from main_mnist import build_mnist_stream, load_mnist_partitions
@@ -85,51 +85,191 @@ class ModelTests(unittest.TestCase):
 
 
 class EvaluationTests(unittest.TestCase):
-    def test_deadline_matching_duplicates_and_paper_delay_convention(self):
-        result = evaluate_changepoints([10, 20], [2, 10, 12, 27], max_delay=4)
-        self.assertEqual(result['matches'], [(10, 10)])
-        self.assertEqual(result['delays'], [1])
-        self.assertEqual(result['false_alarms'], [2, 12, 27])
-        self.assertEqual(result['missed_changes'], [20])
-
     @staticmethod
     def event(start, end, regime, is_new, alarm):
+        # Model timestamps are observation counts; batch ends are exclusive.
         return dict(batch_start=start, batch_end=end, time=end, regime=regime,
                     is_new=is_new, alarm_time=alarm)
 
-    def test_recall_requires_original_id_and_homogeneous_timely_batch(self):
-        labels = np.repeat([1, 2, 1], 10)
+    def score(self, sequence, decisions, alarms=None, max_delay=4):
+        from experiments.evaluation import evaluate_model
+        labels = np.repeat(sequence, 10)
+        cps = list(range(10, len(labels), 10))
+        if alarms is None:
+            alarms = [e['alarm_time'] for e in decisions if e['alarm_time'] is not None]
+        model = SimpleNamespace(n=3, t=len(labels), recognition_log=decisions,
+                                global_changepoints=alarms)
+        return evaluate_model(cps, labels, model, max_delay)
+
+    def test_causal_matching_inclusive_deadline_and_zero_delay(self):
+        result = evaluate_changepoints([10, 20], [2, 10, 12, 24, 25, 29], 4,
+                                      stream_length=30, warmup_end=3)
+        self.assertEqual(result['matches'], [(10, 10), (20, 24)])
+        self.assertEqual(result['delays'], [0, 4])
+        self.assertEqual(result['false_alarms'], [12, 25, 29])
+        self.assertEqual(result['ignored_warmup_alarms'], [2])
+        result = evaluate_changepoints([10, 20], [9, 15, 20, 20], 4)
+        self.assertEqual(result['matches'], [(20, 20)])
+        self.assertEqual(result['false_alarms'], [9, 15, 20])
+        self.assertEqual(result['missed_changes'], [10])
+
+    def test_matching_cannot_cross_next_change_or_stream_end(self):
+        result = evaluate_changepoints([10, 20], [20, 29], 100, stream_length=30)
+        self.assertEqual(result['matches'], [(20, 20)])
+        self.assertEqual(result['false_alarms'], [29])
+        for delay in (None, -1, float('inf'), 2.5):
+            with self.assertRaises(ValueError):
+                evaluate_changepoints([10], [11], delay)
+        with self.assertRaises(ValueError):
+            evaluate_changepoints([10], [30], 4, stream_length=30)
+        self.assertEqual(evaluate_changepoints([10], [10], 0)['delays'], [0])
+
+    def test_user_sanity_check_and_late_discovery(self):
+        sequence = [1, 2, 1, 3, 2, 1]
+        ids = [1, 1, 1, 2, 3, 1]
+        events = [self.event(0, 3, ids[0], True, None)]
+        events += [self.event(i * 10 + 1, i * 10 + 4, ids[i], i in (3, 4), i * 10 + 1)
+                   for i in range(1, len(sequence))]
+        result = self.score(sequence, events)
+        self.assertEqual((result['novel_correct'], result['novel_total']), (1, 2))
+        self.assertEqual((result['recall_correct'], result['recall_total']), (3, 3))
+        self.assertEqual(result['mapping'], {1: 1, 3: 2, 2: 3})
+        self.assertFalse(result['episodes'][1]['correct'])
+
+    def test_missing_alarms_assignments_and_duplicates_remain_failures(self):
         events = [self.event(0, 3, 0, True, None),
                   self.event(11, 14, 1, True, 11),
-                  self.event(21, 24, 0, False, 21)]
-        model = SimpleNamespace(n=3, recognition_log=events)
-        matched = evaluate_changepoints([10, 20], [10, 20], max_delay=4)
-        result = evaluate_recognition(labels, model, matched)
-        self.assertEqual((result['recall_correct'], result['recall_total']), (1, 1))
-        self.assertEqual((result['novel_correct'], result['novel_total']), (2, 2))
-        events[-1]['is_new'], events[-1]['regime'] = True, 2
-        self.assertEqual(evaluate_recognition(labels, model, matched)['recall_correct'], 0)
-        events[-1] = self.event(19, 22, 0, False, 21)
-        result = evaluate_recognition(labels, model, matched)
-        self.assertEqual(result['contaminated_batches'], 1)
-        self.assertEqual(result['recall_correct'], 0)
-        model.recognition_log = events[:2]
-        self.assertEqual(evaluate_recognition(labels, model, matched)['recall_total'], 1)
+                  self.event(21, 24, 2, True, 21)]
+        result = self.score([1, 2, 1, 3, 2], events, [11, 21, 41])
+        self.assertEqual((result['novel_correct'], result['novel_total']), (1, 2))
+        self.assertEqual((result['recall_correct'], result['recall_total']), (0, 2))
+        self.assertEqual(result['mapping'], {1: 0, 2: 1})
+        self.assertEqual(result['detected_count'], 3)
+
+    def test_assignment_deadline_uses_decision_not_alarm_time(self):
+        init = self.event(0, 3, 0, True, None)
+        # Count 20 means index 19: available on the final sample of episode 2.
+        events = [init, self.event(11, 20, 1, True, 11)]
+        result = self.score([1, 2, 1], events, [11, 21])
+        self.assertEqual(result['novel_correct'], 1)
+        self.assertEqual(result['delays'], [0, 0])
+        events[1]['time'] = 21  # index 20 is already the next episode.
+        result = self.score([1, 2, 1], events, [11, 21])
+        self.assertEqual(result['novel_correct'], 0)
+        self.assertEqual(result['mapping'], {1: 0})
+        self.assertEqual(result['mean_delay'], 0)
+
+    def test_mixed_batch_is_not_an_extra_scoring_rule(self):
+        events = [self.event(0, 3, 0, True, None),
+                  self.event(11, 14, 1, True, 11),
+                  self.event(19, 22, 0, False, 21)]
+        self.assertEqual(self.score([1, 2, 1], events)['recall_correct'], 1)
+
+    def test_extra_alarm_cannot_rescue_failed_matched_assignment(self):
+        events = [self.event(0, 3, 0, True, None),
+                  self.event(11, 12, 0, False, 11),
+                  self.event(13, 16, 1, True, 13)]
+        result = self.score([1, 2], events)
+        self.assertEqual(result['novel_correct'], 0)
+        self.assertEqual(result['false_alarms'], [12])
+        self.assertEqual(result['mapping'], {1: 0})
+
+    def test_ids_created_by_unmatched_alarms_are_not_fresh_later(self):
+        events = [self.event(0, 3, 0, True, None),
+                  self.event(5, 8, 1, True, 5),
+                  self.event(11, 14, 1, False, 11),
+                  self.event(21, 24, 0, False, 21),
+                  self.event(31, 34, 2, True, 31)]
+        result = self.score([1, 2, 1, 2], events)
+        self.assertEqual((result['novel_correct'], result['recall_correct']), (0, 2))
+        self.assertEqual(result['mapping'], {1: 0, 2: 2})
+
+    def test_unavailable_assignment_does_not_replace_alarm_delay(self):
+        events = [self.event(0, 3, 0, True, None), self.event(15, 19, 1, True, 15)]
+        result = self.score([1, 2], events)
+        self.assertEqual(result['delays'], [4])
+        self.assertEqual(result['episodes'][1]['assignment_time'], 18)
+
+    def test_aggregate_pools_counts_and_detection_weighted_delays(self):
+        from experiments.evaluation import aggregate_metrics, comparison_table
+        first = self.score([1, 2], [self.event(0, 3, 0, True, None)], [15])
+        second = self.score([1, 2, 1], [self.event(0, 3, 0, True, None)], [11, 21])
+        pooled = aggregate_metrics([first, second])
+        self.assertEqual((pooled['detected_count'], pooled['change_total']), (3, 3))
+        self.assertAlmostEqual(pooled['mean_delay'], 4 / 3)
+        self.assertEqual(pooled['novel_total'], 2)
+        empty = self.score([1], [self.event(0, 3, 0, True, None)])
+        self.assertIsNone(empty['mean_delay'])
+        table = comparison_table({'MMD': empty, 'Pearson': empty})
+        self.assertIn('0/0 (N/A)', table)
 
 
 class ExperimentTests(unittest.TestCase):
-    def test_both_mnist_sequences_run_through_common_pca_and_calibration(self):
+    def test_runner_pairs_observations_and_model_rng_without_passing_truth(self):
+        from experiments.runner import run_comparison
+        observations, draws = {}, {}
+
+        def factory(name, n, m, k_conf, detection, novelty, reg_lambda):
+            observations[name], draws[name] = [], []
+            model = SimpleNamespace(n=n, t=0, global_changepoints=[], recognition_log=[])
+
+            def update(x):
+                observations[name].append(float(x))
+                draws[name].append(np.random.random())
+                model.t += 1
+                if model.t == n:
+                    model.recognition_log.append(dict(time=n, regime=37, is_new=True,
+                                                      alarm_time=None))
+
+            model.update = update
+            return model
+
+        with patch('experiments.runner.make_model', side_effect=factory):
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = run_comparison(
+                    np.arange(20), [10], np.repeat([901, 402], 10), title='paired',
+                    n=3, m=2, k_conf=1, reg_lambda=0.1, max_delay=4, seed=73, show=False,
+                    thresholds={'MMD': dict(detection=0.1, novelty=0.9),
+                                'Pearson': dict(detection=0.4, novelty=0.7)})
+        self.assertEqual(observations['MMD'], observations['Pearson'])
+        self.assertEqual(observations['MMD'], list(range(20)))
+        self.assertEqual(draws['MMD'], draws['Pearson'])
+        self.assertEqual(result['metrics']['MMD']['mapping'], {901: 37})
+        self.assertEqual(result['config']['seed'], 73)
+
+    def test_activity_entrypoints_use_shared_assignment_scores(self):
+        import main_wisdm, main_pamap2
+        rng = np.random.RandomState(3)
+        for module in (main_wisdm, main_pamap2):
+            source = ('generate_synthetic_activity_data' if module is main_wisdm
+                      else 'load_pamap2_full_blocks')
+            activities = {0: rng.normal(size=(22, 3)), 1: rng.normal(size=(11, 3))}
+            settings = dict(N=2, M=1, K_CONF=1, MAX_DELAY=4, SEQUENCE=(0, 1, 0))
+            if module is main_wisdm:
+                settings['DOWNSAMPLE_RATE'] = 4
+            with self.subTest(module=module.__name__), patch.multiple(module, **settings):
+                with patch.object(module, source, return_value=(activities, 11)):
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        result = module.run_experiment(show=False)
+            for metrics in result['metrics'].values():
+                self.assertEqual((metrics['change_total'], metrics['novel_total'],
+                                  metrics['recall_total']), (2, 1, 1))
+            self.assertEqual(result['config']['true_cps'],
+                             [3, 6] if module is main_wisdm else [11, 22])
+            if module is main_pamap2:
+                self.assertEqual(result['models']['Pearson'].reg_lambda, 20)
+
+    def test_both_mnist_sequences_use_common_pca_and_manual_thresholds(self):
         import main_mnist
         rng = np.random.RandomState(15)
         digits = sorted({d for seq in main_mnist.SEQUENCES.values() for d in seq})
         centers = {d: rng.normal(size=10) for d in digits}
         preprocessing = np.vstack([rng.normal(centers[d], 0.2, (20, 10)) for d in digits])
-        calibration = {d: rng.normal(centers[d], 0.2, (100, 10)) for d in digits}
         evaluation = {d: rng.normal(centers[d], 0.2, (100, 10)) for d in digits}
         with patch.multiple(main_mnist, N=8, M=3, K_CONF=2, SAMPLES_PER_DIGIT=20,
-                            PCA_DIM=4, CALIBRATION_REPEATS=2, MAX_DELAY=8):
+                            PCA_DIM=4, PEARSON_TAU=0.4, PEARSON_NU=0.7, MAX_DELAY=8):
             with patch.object(main_mnist, 'load_mnist_partitions',
-                              return_value=(preprocessing, calibration, evaluation)):
+                              return_value=(preprocessing, evaluation)):
                 with contextlib.redirect_stdout(io.StringIO()):
                     result = main_mnist.main(show=False)
         self.assertEqual(set(result['sequences']), {'A', 'B'})
@@ -137,6 +277,8 @@ class ExperimentTests(unittest.TestCase):
             for model in run['models'].values():
                 self.assertEqual(model.t, 220)
                 self.assertEqual(len(model.X[0]), 4)
+            self.assertEqual(run['models']['Pearson'].tau, 0.4)
+            self.assertEqual(run['models']['Pearson'].nu, 0.7)
             self.assertFalse(run['models']['Pearson'].normalize_distance)
             metrics = run['metrics']['Pearson']
             self.assertEqual(metrics['recall_total'], 4 if name == 'A' else 7)
@@ -150,43 +292,52 @@ class ExperimentTests(unittest.TestCase):
                            n=4, m=2, k_conf=2, thresholds=thresholds,
                            reg_lambda=10, max_delay=4, show=False)
 
-    def test_paper_lengths_windows_and_disjoint_seeds(self):
+    def test_paper_lengths_and_windows(self):
         import main_T1, main_T2, main_T3, main_mmd_pearson
         for module, windows in ((main_T1, (150, 40)), (main_T2, (300, 100)),
                                 (main_T3, (600, 200))):
             self.assertEqual((module.N, module.M), windows)
             self.assertEqual(module.SEGMENT_LENGTH, 700)
             self.assertEqual(len(set(module.SEEDS)), 3)
-            self.assertNotIn(module.CALIBRATION_SEED, module.SEEDS)
             data, cps, sequence = generate_moment_matched_stream(module.__name__[-2:])
             self.assertEqual(len(data), 8400)
             self.assertEqual(cps, list(range(700, 8400, 700)))
             self.assertEqual(len(sequence) - len(set(sequence)), 8)
-        self.assertIsNone(main_T3.MMD_NU)
         self.assertEqual((main_mmd_pearson.SEGMENT_LENGTH, main_mmd_pearson.M,
                           main_mmd_pearson.MMD_ETA), (300, 40, 0.12))
 
-    def test_calibration_is_deterministic_without_touching_global_rng(self):
-        def sample(label, size, rng):
-            return rng.normal(label * 5, 1, (size, 2))
-        np.random.seed(17)
-        state = np.random.get_state()
-        parameters = dict(n=8, m=3, k_conf=2, repeats=3, seed=123)
-        first = calibrate_thresholds(sample, (0, 1), **parameters)
-        self.assertEqual(first, calibrate_thresholds(sample, (0, 1), **parameters))
-        np.testing.assert_array_equal(np.random.get_state()[1], state[1])
-        self.assertLess(first['MMD']['novelty'], 1.0)
-        self.assertLess(first['Pearson']['detection'], 10.0)
+    def test_missing_mnist_threshold_fails_before_downloading(self):
+        import main_mnist
+        with patch.object(main_mnist, 'PEARSON_TAU', None):
+            with patch.object(main_mnist, 'fetch_openml') as download:
+                with self.assertRaisesRegex(ValueError, 'Set PEARSON_TAU'):
+                    main_mnist.main(show=False)
+        download.assert_not_called()
+
+    def test_tiers_use_manual_thresholds_without_replacing_them(self):
+        import main_T1, main_T2, main_T3
+        for module in (main_T1, main_T2, main_T3):
+            with self.subTest(tier=module.__name__), patch.multiple(
+                    module, N=8, M=3, K_CONF=2, SEGMENT_LENGTH=20,
+                    SEEDS=(42,), MAX_DELAY=8, MMD_ETA=0.12, MMD_NU=0.9,
+                    PEARSON_TAU=0.4, PEARSON_NU=0.7):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    result = module.main(show=False)
+                run = result['runs'][0]
+                self.assertEqual(run['models']['MMD'].eta, 0.12)
+                self.assertEqual(run['models']['MMD'].nu, 0.9)
+                self.assertEqual(run['models']['Pearson'].tau, 0.4)
+                self.assertEqual(run['models']['Pearson'].nu, 0.7)
+                self.assertEqual(run['models']['Pearson'].t, 240)
 
     def test_mnist_partitions_and_repeated_digits_never_reuse_images(self):
         X = np.arange(120, dtype=float)[:, None]
         y = np.repeat([0, 1], 60)
         with patch('main_mnist.fetch_openml', return_value=(X, y)):
-            preprocessing, calibration, evaluation = load_mnist_partitions(5, 10, 42)
+            preprocessing, evaluation = load_mnist_partitions(5, 42)
         groups = [set(preprocessing.ravel()),
-                  set(np.concatenate(list(calibration.values())).ravel()),
                   set(np.concatenate(list(evaluation.values())).ravel())]
-        for i in range(3):
+        for i in range(len(groups)):
             for j in range(i):
                 self.assertFalse(groups[i] & groups[j])
         offsets = {}

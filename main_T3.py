@@ -1,6 +1,7 @@
 """ICASSP section 5.2, T3: common mean and common variance."""
 
-from experiments.moment_matched import run_tier
+from data.generation import generate_moment_matched_stream
+from experiments.runner import labels_for_segments, print_aggregate, run_comparison, validate_thresholds
 
 # Reported paper settings: 700 observations per segment, three streams.
 N = 600
@@ -12,24 +13,29 @@ SEEDS = (42, 43, 44)
 # T1/T2 population values and all seeds are choices not specified in the PDF.
 MEANS = (0.0, 0.0, 0.0, 0.0)
 STDS = (1.0, 1.0, 1.0, 1.0)
-MMD_ETA = None                  # None: independent calibration.
-MMD_NU = None                 # T3's printed 1.00 lacks full precision; calibrate.
-PEARSON_TAU = None
-PEARSON_NU = None
+MMD_ETA = 0.1  # Arbitrary placeholder; adjust for this experiment.
+MMD_NU = 0.99  # Arbitrary placeholder; adjust for this experiment.
+PEARSON_TAU = 0.4  # Arbitrary placeholder; adjust for this experiment.
+PEARSON_NU = 0.7  # Arbitrary placeholder; adjust for this experiment.
 REG_LAMBDA = 0.1                # Pearson extension, not a reported ICASSP value.
-CALIBRATION_SEED = 10003
-CALIBRATION_REPEATS = 12
 MAX_DELAY = M + K_CONF          # Explicit evaluation horizon, not a paper setting.
 
 
 def main(show=True):
-    return run_tier(
-        tier='T3', n=N, m=M, k_conf=K_CONF, segment_length=SEGMENT_LENGTH,
-        means=MEANS, stds=STDS, mmd_eta=MMD_ETA, mmd_nu=MMD_NU,
-        pearson_tau=PEARSON_TAU, pearson_nu=PEARSON_NU,
-        reg_lambda=REG_LAMBDA, calibration_seed=CALIBRATION_SEED,
-        calibration_repeats=CALIBRATION_REPEATS, seeds=SEEDS,
-        max_delay=MAX_DELAY, show=show)
+    thresholds = {'MMD': dict(detection=MMD_ETA, novelty=MMD_NU),
+                  'Pearson': dict(detection=PEARSON_TAU, novelty=PEARSON_NU)}
+    validate_thresholds(thresholds, REG_LAMBDA)
+    runs = []
+    for seed in SEEDS:
+        data, cps, sequence = generate_moment_matched_stream(
+            'T3', SEGMENT_LENGTH, seed, MEANS, STDS)
+        runs.append(run_comparison(
+            data, cps, labels_for_segments(sequence, SEGMENT_LENGTH),
+            title=f'T3, seed={seed}', n=N, m=M, k_conf=K_CONF,
+            thresholds=thresholds, reg_lambda=REG_LAMBDA,
+            max_delay=MAX_DELAY, show=show, seed=seed))
+    print_aggregate(runs)
+    return dict(runs=runs)
 
 
 if __name__ == '__main__':

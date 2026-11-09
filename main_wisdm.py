@@ -1,22 +1,31 @@
+"""Synthetic activity surrogate (not real WISDM recordings)."""
+
 import numpy as np
-from main_mmd_pearson import (
-    detection_indices, print_detection_summary,
-)
-import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
+from experiments.runner import labels_for_segments, run_comparison
 
-# Import the MMD and Pearson models
-from model.owcl_mmd import OWR_CPD
-from model.owcl_pearson import PearsonOWRCPD
+N = 150
+M = 50
+K_CONF = 6
+MAX_DELAY = M + K_CONF  # Inclusive tolerance in downsampled model observations.
+SEED = 42
+DOWNSAMPLE_RATE = 5
+USE_PCA = False
+PCA_D = 2
+SEQUENCE = (0, 1, 0, 2, 3, 2, 1, 3, 0, 2, 3)
+MMD_ETA = 0.06
+MMD_NU = 0.96
+PEARSON_TAU = 0.40
+PEARSON_NU = 0.71
+REG_LAMBDA = 1e-2
 
 
-
-def generate_synthetic_activity_data(blocks_per_activity=None):
+def generate_synthetic_activity_data(blocks_per_activity=None, seed=42):
     """Synthetic Gaussian activity surrogate; this does not load WISDM recordings."""
     print("Generating synthetic activity data (WISDM placeholder)...")
     block_size = 2500
-    rng = np.random.RandomState(42)
+    rng = np.random.RandomState(seed)
     specifications = {
         0: (0.5, [1.0, 0.0, 9.8]),
         1: (1.5, [0.0, 2.0, 9.8]),
@@ -59,123 +68,25 @@ def build_stream(sequence, activities, block_size):
         current_step += len(block)
     return np.vstack(stream), true_cps
 
-def run_experiment():
-    # --- CONFIGURATION ---
-    USE_PCA = False
-    PCA_D = 2  
-    
-    n = 150
-    m = 50
-    k_conf = 6
-    DOWNSAMPLE_RATE = 5
-    dynamic_gamma = True
-    
-    sequence = [0, 1, 0, 2, 3, 2, 1, 3, 0, 2, 3]
-    
-    print(f"Building stream for sequence: {sequence}")
-    counts = {act: sequence.count(act) for act in set(sequence)}
-    activities, block_size = generate_synthetic_activity_data(counts)
-    stream, true_cps = build_stream(sequence, activities, block_size)
-
-    # Downsample before fitting: n always denotes observations seen by the model.
-    print(f"Downsampling stream by factor of {DOWNSAMPLE_RATE}...")
+def run_experiment(show=True, seed=SEED):
+    counts = {act: SEQUENCE.count(act) for act in set(SEQUENCE)}
+    activities, block_size = generate_synthetic_activity_data(counts, seed=seed)
+    stream, _ = build_stream(SEQUENCE, activities, block_size)
+    labels = labels_for_segments(SEQUENCE, block_size)[::DOWNSAMPLE_RATE]
     stream = stream[::DOWNSAMPLE_RATE]
-    true_cps = [(cp + DOWNSAMPLE_RATE - 1) // DOWNSAMPLE_RATE for cp in true_cps]
-    
-    # Freeze preprocessing after the initial reference window; no future fitting.
-    scaler = StandardScaler()
-    scaler.fit(stream[:n])
-    stream_processed = scaler.transform(stream)
-    
+    true_cps = (np.flatnonzero(labels[1:] != labels[:-1]) + 1).tolist()
+    # Freeze observation-only preprocessing after the initial reference window.
+    processed = StandardScaler().fit(stream[:N]).transform(stream)
     if USE_PCA:
-        print(f"Applying PCA (d={PCA_D})...")
-        pca = PCA(n_components=PCA_D)
-        pca.fit(stream_processed[:n])
-        stream_processed = pca.transform(stream_processed)
-    else:
-        print("Skipping PCA. Streaming 3D signal directly...")
+        processed = PCA(n_components=PCA_D, random_state=seed).fit(processed[:N]).transform(processed)
+    return run_comparison(
+        processed, true_cps, labels,
+        title=f'Synthetic activity (WISDM placeholder), seed={seed}',
+        n=N, m=M, k_conf=K_CONF,
+        thresholds={'MMD': dict(detection=MMD_ETA, novelty=MMD_NU),
+                    'Pearson': dict(detection=PEARSON_TAU, novelty=PEARSON_NU)},
+        reg_lambda=REG_LAMBDA, max_delay=MAX_DELAY, seed=seed, show=show)
 
-    # Initialize the MMD and Pearson models
-    mmd_model = OWR_CPD(
-        n=n, 
-        m=m, 
-        eta=0.06, 
-        nu=0.96, 
-        k_conf=k_conf,
-        dynamic_gamma=dynamic_gamma
-    )
-    
-    pearson_model = PearsonOWRCPD(
-        n=n, 
-        m=m, 
-        tau=0.40, 
-        nu=0.71, 
-        k_conf=k_conf, 
-        reg_lambda=1e-2, 
-        factor=1.0,
-        dynamic_gamma=dynamic_gamma,
-        normalize_distance=False
-    )
-    
-    total_steps = len(stream_processed)
-    print(f"Starting concurrent monitoring (Total steps: {total_steps})...")
 
-    # Run Stream
-    for t in range(total_steps):
-        x = stream_processed[t]
-        mmd_model.update(x)
-        pearson_model.update(x)
-
-    # Extract scores
-    mmd_scores = mmd_model.mmd_scores
-    pearson_scores = pearson_model.pearson_div_scores
-
-    # Plotting
-    fig, axes = plt.subplots(2, 1, figsize=(12, 7), sharex=True)
-    fig.suptitle(f"Synthetic Activity Stream (WISDM placeholder) (PCA={USE_PCA})", fontsize=14)
-
-    models_data = [
-        ("MMD Model", mmd_scores, mmd_model.eta, detection_indices(mmd_model), 'teal'),
-        ("Pearson Model", pearson_scores, pearson_model.tau, detection_indices(pearson_model), 'purple'),
-    ]
-
-    for idx, (name, scores, threshold, changepoints, color) in enumerate(models_data):
-        ax = axes[idx]
-        if len(scores) > 0:
-            ax.plot(scores, label=f"{name} Score", color=color, linewidth=1.2)
-            ax.axhline(y=threshold, color='orange', linestyle='--', label="Detection Threshold")
-            
-            for cp in true_cps:
-                ax.axvline(x=cp, color='black', linestyle=':', alpha=0.6)
-            for cp in changepoints:
-                ax.axvline(x=cp, color='red', linestyle='-', alpha=0.8)
-                
-        ax.set_title(name, fontsize=10)
-        ax.legend(loc='upper left', fontsize=8)
-        ax.grid(True, alpha=0.3)
-
-    axes[-1].set_xlabel("Time Step (t)")
-    plt.tight_layout()
-
-    # --- TERMINAL SUMMARY OUTPUT ---
-    print("\n" + "="*50)
-    print(f" SYNTHETIC ACTIVITY RESULTS (WISDM placeholder) (PCA={USE_PCA})")
-    print("="*50)
-    print(f" GROUND TRUTH Sequence: {' -> '.join(map(str, sequence))}")
-    print(f" True Change Points   : {true_cps}\n")
-
-    models_summary = [
-        ("MMD OWR MODEL", mmd_model),
-        ("PEARSON OWR MODEL", pearson_model),
-    ]
-
-    for name, model in models_summary:
-        print(f" {name}")
-        print_detection_summary(true_cps, model)
-        print()
-    print("="*50 + "\n")
-
-    plt.show()
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     run_experiment()

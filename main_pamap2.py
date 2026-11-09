@@ -1,17 +1,23 @@
+"""Real PAMAP2 recordings, scored by the common benchmark evaluator."""
+
 import numpy as np
-from main_mmd_pearson import (
-    detection_indices, print_detection_summary,
-)
-import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
+from data.manage_pamap2 import load_pamap2_full_blocks
+from experiments.runner import labels_for_segments, run_comparison
 
-# Import the new PAMAP2 data manager
-from data.manage_pamap2 import load_pamap2_blocks, load_pamap2_full_blocks
-
-# Import the MMD and Pearson models
-from model.owcl_mmd import OWR_CPD
-from model.owcl_pearson import PearsonOWRCPD
+N = 200
+M = 100
+K_CONF = 6
+MAX_DELAY = M + K_CONF  # Inclusive tolerance in model observations at 100 Hz.
+USE_PCA = False
+PCA_D = 5
+SEQUENCE = (0, 1, 0, 2, 3, 2, 1, 3, 0, 2, 3)
+MMD_ETA = 0.75
+MMD_NU = 0.95
+PEARSON_TAU = 0.80
+PEARSON_NU = 0.71
+REG_LAMBDA = 20.0  # Preserve original settings; score <= 1/lambda = 0.05.
 
 
 def build_stream(sequence, activities, block_size):
@@ -37,122 +43,25 @@ def build_stream(sequence, activities, block_size):
         current_step += len(block)
     return np.vstack(stream), true_cps
 
-def run_experiment():
-    # --- CONFIGURATION ---
-    USE_PCA = False  
-    PCA_D = 5  
-    
-    # At 100 Hz, n=200 and m=100 correspond to 2 and 1 seconds.
-    n = 200
-    m = 100
-    k_conf = 6
-    dynamic_gamma = True
-    
-    sequence = [0, 1, 0, 2, 3, 2, 1, 3, 0, 2, 3]
-    
-    print(f"Building PAMAP2 stream for sequence: {sequence}")
-    
-    # Fetch data directly from our dedicated manager
-    counts = {act: sequence.count(act) for act in set(sequence)}
+def run_experiment(show=True):
+    counts = {act: SEQUENCE.count(act) for act in set(SEQUENCE)}
     activities, block_size = load_pamap2_full_blocks(
-        block_size=1500, blocks_per_activity=counts)  # 15 seconds per block
-    stream, true_cps = build_stream(sequence, activities, block_size)
-    
-    # Preprocessing
-    scaler = StandardScaler()
-    scaler.fit(stream[:n])
-    stream_processed = scaler.transform(stream)
-    
+        block_size=1500, blocks_per_activity=counts)
+    stream, true_cps = build_stream(SEQUENCE, activities, block_size)
+    labels = labels_for_segments(SEQUENCE, block_size)
+    processed = StandardScaler().fit(stream[:N]).transform(stream)
     if USE_PCA:
-        print(f"Applying PCA (d={PCA_D})...")
-        pca = PCA(n_components=PCA_D)
-        pca.fit(stream_processed[:n])
-        stream_processed = pca.transform(stream_processed)
-    else:
-        print(f"Skipping PCA. Streaming {stream.shape[1]} sensor features...")
+        processed = PCA(n_components=PCA_D, random_state=42).fit(processed[:N]).transform(processed)
+    # This benchmark deliberately retains its pre-existing unreachable Pearson
+    # threshold. Do not silently retune parameters using evaluation truth.
+    return run_comparison(
+        processed, true_cps, labels, title='PAMAP2 subject101',
+        n=N, m=M, k_conf=K_CONF,
+        thresholds={'MMD': dict(detection=MMD_ETA, novelty=MMD_NU),
+                    'Pearson': dict(detection=PEARSON_TAU, novelty=PEARSON_NU)},
+        reg_lambda=REG_LAMBDA, max_delay=MAX_DELAY, show=show,
+        check_score_bounds=False)
 
-    # Initialize the MMD and Pearson models
-    mmd_model = OWR_CPD(
-        n=n, 
-        m=m, 
-        eta=0.75, 
-        nu=0.95, 
-        k_conf=k_conf, 
-        factor=1.0,
-        dynamic_gamma=dynamic_gamma
-    )
-    
-    pearson_model = PearsonOWRCPD(
-        n=n, 
-        m=m, 
-        tau=0.80, 
-        nu=0.71, 
-        k_conf=k_conf, 
-        reg_lambda=20.0, 
-        factor=1.0,
-        dynamic_gamma=dynamic_gamma,
-        normalize_distance=False
-    )
-    
-    total_steps = len(stream_processed)
-    print(f"Starting concurrent monitoring (Total steps: {total_steps})...")
 
-    # Run Stream
-    for t in range(total_steps):
-        x = stream_processed[t]
-        mmd_model.update(x)
-        pearson_model.update(x)
-
-    # Extract Scores
-    mmd_scores = mmd_model.mmd_scores
-    pearson_scores = pearson_model.pearson_div_scores
-
-    # Plotting
-    fig, axes = plt.subplots(2, 1, figsize=(12, 7), sharex=True)
-    fig.suptitle(f"PAMAP2 Activity Stream (PCA={USE_PCA})", fontsize=14)
-
-    models_data = [
-        ("MMD Model", mmd_scores, mmd_model.eta, detection_indices(mmd_model), 'teal'),
-        ("Pearson Model", pearson_scores, pearson_model.tau, detection_indices(pearson_model), 'purple'),
-    ]
-
-    for idx, (name, scores, threshold, changepoints, color) in enumerate(models_data):
-        ax = axes[idx]
-        if len(scores) > 0:
-            ax.plot(scores, label=f"{name} Score", color=color, linewidth=1.2)
-            ax.axhline(y=threshold, color='orange', linestyle='--', label="Detection Threshold")
-            
-            for cp in true_cps:
-                ax.axvline(x=cp, color='black', linestyle=':', alpha=0.6)
-            for cp in changepoints:
-                ax.axvline(x=cp, color='red', linestyle='-', alpha=0.8)
-                
-        ax.set_title(name, fontsize=10)
-        ax.legend(loc='upper left', fontsize=8)
-        ax.grid(True, alpha=0.3)
-
-    axes[-1].set_xlabel("Time Step (t)")
-    plt.tight_layout()
-
-    # --- TERMINAL SUMMARY OUTPUT ---
-    print("\n" + "="*50)
-    print(f" PAMAP2 EXPERIMENT RESULTS (PCA={USE_PCA})")
-    print("="*50)
-    print(f" GROUND TRUTH Sequence: {' -> '.join(map(str, sequence))}")
-    print(f" True Change Points   : {true_cps}\n")
-
-    models = [
-        ("MMD OWR MODEL", mmd_model),
-        ("PEARSON OWR MODEL", pearson_model),
-    ]
-
-    for name, model in models:
-        print(f" {name}")
-        print_detection_summary(true_cps, model)
-        print()
-    print("="*50 + "\n")
-
-    plt.show()
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     run_experiment()

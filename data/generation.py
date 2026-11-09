@@ -104,3 +104,41 @@ def generate_regime_stream(length, changepoints, means, stds, seed=None):
     return data, changepoints
 
 
+# Distribution families and recurring sequence used by the T1/T2/T3 experiments.
+SEQUENCE = (1, 2, 3, 4, 2, 1, 4, 3, 1, 4, 2, 3)
+
+
+def sample_family(label, size, rng, means, stds):
+    mean, std = means[label - 1], stds[label - 1]
+    if label == 1:
+        values = rng.normal(mean, std, size)
+    elif label == 2:
+        values = rng.laplace(mean, std / np.sqrt(2), size)
+    elif label == 3:
+        values = rng.exponential(std, size) - std + mean
+    elif label == 4:
+        values = rng.uniform(mean - std * np.sqrt(3), mean + std * np.sqrt(3), size)
+    else:
+        raise ValueError('Family label must be 1, 2, 3, or 4')
+    return values[:, None]
+
+
+def generate_moment_matched_stream(tier='T1', segment_length=700, seed=42,
+                                   means=None, stds=None):
+    defaults = {
+        'T1': ((0, 3, -3, 6), (1, 1, 1, 1)),
+        'T2': ((0, 0, 0, 0), (1, 2, 0.5, 3)),
+        'T3': ((0, 0, 0, 0), (1, 1, 1, 1)),
+    }
+    if tier not in defaults:
+        raise ValueError("Tier must be 'T1', 'T2', or 'T3'")
+    if segment_length < 1:
+        raise ValueError('Segment length must be positive')
+    default_means, default_stds = defaults[tier]
+    means = default_means if means is None else means
+    stds = default_stds if stds is None else stds
+    rng = np.random.RandomState(seed)
+    data = np.concatenate([sample_family(label, segment_length, rng, means, stds)
+                           for label in SEQUENCE]).ravel()
+    return data, list(range(segment_length, len(data), segment_length)), list(SEQUENCE)
+

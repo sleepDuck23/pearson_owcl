@@ -1,12 +1,11 @@
-"""ICASSP section 5.3: both MNIST sequences with held-out calibration."""
+"""ICASSP section 5.3: both MNIST sequences with manually chosen thresholds."""
 
 from pathlib import Path
 import numpy as np
 from sklearn.datasets import fetch_openml
 from sklearn.decomposition import PCA
 
-from experiments.calibration import calibrate_thresholds, print_calibration
-from experiments.runner import labels_for_segments, run_comparison
+from experiments.runner import labels_for_segments, run_comparison, validate_thresholds
 
 N = 150
 M = 40
@@ -20,40 +19,33 @@ SEQUENCES = {
     'B': (4, 9, 4, 8, 3, 8, 9, 3, 4, 8, 3),
 }
 
-# Explicit choices for details not supplied by the paper. These partitions
-# are disjoint; neither PCA nor thresholds use evaluation images.
+# Fit PCA on images separate from the evaluation streams.
 PCA_IMAGES_PER_DIGIT = 500
-CALIBRATION_IMAGES_PER_DIGIT = 1500
 SPLIT_SEED = 2027
 EVALUATION_SEED = 42
-CALIBRATION_SEED = 10020
-CALIBRATION_REPEATS = 12
 REG_LAMBDA = 0.1
-PEARSON_TAU = None
-PEARSON_NU = None
+PEARSON_TAU = 0.4  # Arbitrary placeholder; adjust for this experiment.
+PEARSON_NU = 0.7  # Arbitrary placeholder; adjust for this experiment.
 MAX_DELAY = M + K_CONF
 # fetch_openml appends its own 'openml' subdirectory to data_home.
 DATA_HOME = Path(__file__).resolve().parent / 'data'
 
 
-def load_mnist_partitions(pca_per_digit=PCA_IMAGES_PER_DIGIT,
-                          calibration_per_digit=CALIBRATION_IMAGES_PER_DIGIT,
-                          seed=SPLIT_SEED):
-    print('Loading MNIST and reserving disjoint PCA, calibration, and evaluation images...')
+def load_mnist_partitions(pca_per_digit=PCA_IMAGES_PER_DIGIT, seed=SPLIT_SEED):
+    print('Loading MNIST and reserving disjoint PCA and evaluation images...')
     X, y = fetch_openml('mnist_784', version=1, return_X_y=True,
                        as_frame=False, parser='auto', data_home=str(DATA_HOME))
     X, y = np.asarray(X, dtype=float) / 255.0, np.asarray(y).astype(int)
     rng = np.random.RandomState(seed)
-    preprocessing, calibration, evaluation = [], {}, {}
+    preprocessing, evaluation = [], {}
     for digit in sorted(set(y)):
         indices = rng.permutation(np.flatnonzero(y == digit))
-        split = pca_per_digit + calibration_per_digit
+        split = pca_per_digit
         if len(indices) <= split:
             raise ValueError(f'Digit {digit} has too few images for the requested disjoint splits')
         preprocessing.append(X[indices[:pca_per_digit]])
-        calibration[int(digit)] = X[indices[pca_per_digit:split]]
         evaluation[int(digit)] = X[indices[split:]]
-    return np.vstack(preprocessing), calibration, evaluation
+    return np.vstack(preprocessing), evaluation
 
 
 def build_mnist_stream(sequence, evaluation_pools, samples_per_digit=300, offsets=None):
@@ -77,38 +69,23 @@ def build_mnist_stream(sequence, evaluation_pools, samples_per_digit=300, offset
 
 def generate_mnist_stream(sequence, samples_per_digit=300):
     """Compatibility helper; the main below loads/splits the dataset only once."""
-    _, _, pools = load_mnist_partitions()
+    _, pools = load_mnist_partitions()
     return build_mnist_stream(sequence, pools, samples_per_digit)
 
 
 def main(show=True):
-    preprocessing, calibration_pools, evaluation_pools = load_mnist_partitions()
+    thresholds = {'MMD': dict(detection=MMD_ETA, novelty=MMD_NU),
+                  'Pearson': dict(detection=PEARSON_TAU, novelty=PEARSON_NU)}
+    validate_thresholds(thresholds, REG_LAMBDA)
+    preprocessing, evaluation_pools = load_mnist_partitions()
     print(f'Fitting PCA(d={PCA_DIM}) on separate preprocessing images...')
     pca = PCA(n_components=PCA_DIM, random_state=SPLIT_SEED)
     pca.fit(preprocessing)
-    calibration_pools = {digit: pca.transform(images)
-                         for digit, images in calibration_pools.items()}
     # Identical PCA coordinates and Euclidean distances for both models.
     rng = np.random.RandomState(EVALUATION_SEED)
     evaluation_pools = {digit: images[rng.permutation(len(images))]
                         for digit, images in evaluation_pools.items()}
 
-    def sample(label, size, calibration_rng):
-        pool = calibration_pools[label]
-        if size > len(pool):
-            raise ValueError('Increase CALIBRATION_IMAGES_PER_DIGIT')
-        return pool[calibration_rng.choice(len(pool), size=size, replace=False)]
-
-    digits = sorted({digit for sequence in SEQUENCES.values() for digit in sequence})
-    calibration = calibrate_thresholds(
-        sample, digits, n=N, m=M, k_conf=K_CONF, reg_lambda=REG_LAMBDA,
-        seed=CALIBRATION_SEED, repeats=CALIBRATION_REPEATS, names=('Pearson',))
-    overrides = {'Pearson': dict(detection=PEARSON_TAU, novelty=PEARSON_NU)}
-    print(f'MMD paper settings: eta={MMD_ETA}, nu={MMD_NU}')
-    print_calibration(calibration, overrides)
-    thresholds = {'MMD': dict(detection=MMD_ETA, novelty=MMD_NU),
-                  'Pearson': {key: calibration['Pearson'][key] if value is None else value
-                              for key, value in overrides['Pearson'].items()}}
     offsets, results = {}, {}
     for name, sequence in SEQUENCES.items():
         raw, cps = build_mnist_stream(sequence, evaluation_pools, SAMPLES_PER_DIGIT, offsets)
@@ -117,8 +94,8 @@ def main(show=True):
             data, cps, labels_for_segments(sequence, SAMPLES_PER_DIGIT),
             title=f'MNIST sequence {name}', n=N, m=M, k_conf=K_CONF,
             thresholds=thresholds, reg_lambda=REG_LAMBDA,
-            max_delay=MAX_DELAY, show=show)
-    return dict(calibration=calibration, sequences=results)
+            max_delay=MAX_DELAY, show=show, seed=EVALUATION_SEED)
+    return dict(sequences=results)
 
 
 if __name__ == '__main__':
