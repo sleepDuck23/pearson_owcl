@@ -1,6 +1,5 @@
 """ICASSP section 5.2, T2: common mean and distinct variances."""
 
-from pathlib import Path
 import matplotlib.pyplot as plt
 
 from data.generation import generate_moment_matched_stream
@@ -18,7 +17,6 @@ K_CONF = 6
 SEGMENT_LENGTH = 700
 SEEDS = (42, 43, 44)
 RANDOMIZE_FAMILIES = True  # Assign Gaussian/Laplace/Exponential/Uniform to IDs per seed.
-OUTPUT_DIR = Path(__file__).resolve().parent / 'results' / 'T2'
 
 # T1/T2 population values and all seeds are choices not specified in the PDF.
 MEANS = (0.0, 0.0, 0.0, 0.0)
@@ -87,4 +85,4 @@ def main(show=True, output_dir=None):
 
 
 if __name__ == '__main__':
-    main(output_dir=OUTPUT_DIR)
+    main()

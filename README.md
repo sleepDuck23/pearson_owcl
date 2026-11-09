@@ -27,17 +27,9 @@ python3 main_mmd_pearson.py
 ```
 
 It prints detection and recognition metrics and opens Matplotlib figures.
-Individual scripts display figures. Run the full shared evaluation without plots and
-save a Markdown report plus auditable per-run JSON with:
+Experiment mains print results and display plots without saving files by default.
 
-```bash
-MPLBACKEND=Agg python3 -m experiments.benchmark
-```
-
-Outputs are [results/benchmark_report.md](results/benchmark_report.md) and
-[results/benchmark_results.json](results/benchmark_results.json). Select a subset
-with `--benchmarks gaussian T1 T2 T3 mnist pamap2 wisdm` and choose a directory
-with `--output-dir PATH`.
+Run the individual main you are editing while tuning parameters.
 MNIST and PAMAP2 require internet access for their initial dataset downloads.
 
 ## Run the experiments
@@ -74,7 +66,7 @@ For example, in `main_mmd_pearson.py`, set `gamma=0.25` and
 The shared runner receives your model instances without constructing or
 reconfiguring them. Each repeated stream and MNIST sequence gets a fresh pair.
 `MAX_DELAY` sets the common scoring tolerance independently of model parameters.
-Saved JSON records each model's actual constructor settings under
+Returned results record each model's actual constructor settings under
 `config.model_parameters`, including its gamma before streaming updates.
 
 For the Gaussian, T1/T2/T3, and MNIST experiments, disable plotting with
@@ -110,14 +102,12 @@ stream. Each seed prints its own five-metric MMD/Pearson table and produces its
 own score and regime-ID figures, with the seed in each title. All three runs
 finish before the plot windows block; pooled results print afterward.
 
-Running `python3 main_T1.py` (or T2/T3) also saves outputs under `results/T1/`
-(or `T2/`, `T3/`): `seed_42_scores.png`, `seed_42_regimes.png`, the corresponding
-files for seeds 43 and 44, plus `results.md` and `results.json` containing
-individual and pooled scores. `OUTPUT_DIR` in each main sets the destination.
-To save plots without opening windows programmatically:
+Running `python3 main_T1.py` (or T2/T3) prints the individual and pooled
+tables and shows the figures without writing reports or plot files. To run
+without opening windows:
 
 ```bash
-python3 -c "import main_T1; main_T1.main(show=False, output_dir=main_T1.OUTPUT_DIR)"
+python3 -c "import main_T1; main_T1.main(show=False)"
 ```
 
 The T1/T2/T3 data generators use the `MEANS` and `STDS` configured in each
@@ -132,7 +122,7 @@ Every family occurs exactly once among the four regimes. The same seed gives
 the same assignment across T1/T2/T3. That assignment stays fixed on all returns;
 each episode draws fresh observations. The chronological episode-label sequence
 is unchanged. Both models see the same generated stream, and the family mapping
-is printed and stored as `config.stream_metadata` in each run's report/JSON.
+is printed and retained as `config.stream_metadata` in each run's returned results.
 Setting `RANDOMIZE_FAMILIES = False` restores the historical fixed assignment
 (1=Gaussian, 2=Laplace, 3=exponential, 4=uniform) and sampling sequence.
 
@@ -196,7 +186,7 @@ reserved for threshold calibration.
 
 The root scripts choose the experiment, data, and parameters. `data/` prepares
 observations, `model/` implements the detectors, and `experiments/` shares running
-and scoring utilities. `tests/` checks behavior, while `proofs/` contains the
+and scoring utilities. `proofs/` contains the
 mathematical background.
 
 ### Root: experiment entry points and project information
@@ -248,18 +238,11 @@ classical Pearson divergence.
 |---|---|
 | [runner.py](experiments/runner.py) | Accepts models constructed by the experiment main, validates manual thresholds, expands segment labels, feeds identical observations to both models, records their actual settings, prints summaries, aggregates repeated runs, and plots scores and regime IDs. It does not construct models or override their parameters. |
 | [evaluation.py](experiments/evaluation.py) | Scores confirmed alarms and timely matched-alarm assignments using a chronological one-to-one mapping, excludes warm-up from assignment scores, and pools counts and delays across runs. |
-| [benchmark.py](experiments/benchmark.py) | Runs all configured benchmarks without plots and saves side-by-side Markdown tables plus JSON containing configurations, stream hashes, raw events, per-episode decisions, and aggregate metrics. |
 
 These are utilities rather than separate experiments. There is no calibration
 module: parameter selection belongs to the main you are running. No
 `__init__.py` is required for these directory imports when running from the
 repository root with Python 3.
-
-### `tests/`: automated correctness checks
-
-| File | Objective and behavior |
-|---|---|
-| [test_paper_experiments.py](tests/test_paper_experiments.py) | Checks confirmation/reset behavior, monitoring and restart timing, stored bandwidth consistency, recursive Pearson scores against an independent feature-space calculation, alarm matching, regime recall, manual threshold propagation, and disjoint MNIST image use. MNIST downloads are mocked. |
 
 ### `proofs/`: mathematical support for parameter choices
 
@@ -363,15 +346,3 @@ The detection score is bounded by `1/lambda=0.05`, so it cannot alarm at that
 threshold. Its runner explicitly disables the usual score-bound validation to
 measure the original configuration without silently replacing parameters.
 WISDM is a synthetic Gaussian activity surrogate, not a real-data WISDM result.
-
-## Run the tests
-
-```bash
-MPLBACKEND=Agg python3 -m unittest discover -s tests -v
-```
-
-Tests cover monitoring/restart timing, bandwidth/statistic consistency, the
-recursive Pearson score against an independent feature-space operator solve,
-inclusive deadlines and zero-delay alarms, missing/late/extra assignments,
-the late-discovery sanity check, fixed ID ownership, pooled counts and delays,
-manual threshold propagation, and disjoint MNIST image allocation. MNIST tests mock the download and need no network.
