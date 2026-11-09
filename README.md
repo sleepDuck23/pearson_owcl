@@ -106,9 +106,48 @@ settings are listed below; activity configurations are in their respective scrip
 
 All current experiment configurations use six consecutive exceedances for confirmation. T1/T2/T3 each
 run three independent streams (seeds 42, 43, 44), with eight true returns per
-stream, and report aggregated re-identification out of 24. Their data generators
-match population moments; they do not force finite batches to have identical
-sample moments.
+stream. Each seed prints its own five-metric MMD/Pearson table and produces its
+own score and regime-ID figures, with the seed in each title. All three runs
+finish before the plot windows block; pooled results print afterward.
+
+Running `python3 main_T1.py` (or T2/T3) also saves outputs under `results/T1/`
+(or `T2/`, `T3/`): `seed_42_scores.png`, `seed_42_regimes.png`, the corresponding
+files for seeds 43 and 44, plus `results.md` and `results.json` containing
+individual and pooled scores. `OUTPUT_DIR` in each main sets the destination.
+To save plots without opening windows programmatically:
+
+```bash
+python3 -c "import main_T1; main_T1.main(show=False, output_dir=main_T1.OUTPUT_DIR)"
+```
+
+The T1/T2/T3 data generators use the `MEANS` and `STDS` configured in each
+main. These population parameters stay fixed across seeds. The tier constraints
+are validated: T1 has four distinct means and one common std; T2 has one common
+mean and four distinct stds; T3 has one common mean and one common std.
+Finite batches can have different sample means/stds.
+
+With `RANDOMIZE_FAMILIES = True` (the default), each seed assigns Gaussian,
+Laplace, exponential, and uniform to regime IDs 1–4 through a random permutation.
+Every family occurs exactly once among the four regimes. The same seed gives
+the same assignment across T1/T2/T3. That assignment stays fixed on all returns;
+each episode draws fresh observations. The chronological episode-label sequence
+is unchanged. Both models see the same generated stream, and the family mapping
+is printed and stored as `config.stream_metadata` in each run's report/JSON.
+Setting `RANDOMIZE_FAMILIES = False` restores the historical fixed assignment
+(1=Gaussian, 2=Laplace, 3=exponential, 4=uniform) and sampling sequence.
+
+For requested population mean `mu` and std `sigma`, sampling uses:
+
+| Family | Parameters / transformation |
+|---|---|
+| Gaussian | mean `mu`, std `sigma` |
+| Laplace | location `mu`, scale `sigma / sqrt(2)` |
+| Exponential | `mu - sigma + Exponential(scale=sigma)` |
+| Uniform | lower `mu - sqrt(3)*sigma`, upper `mu + sqrt(3)*sigma` |
+
+The exponential is shifted so it can share any requested mean with the other
+families while retaining std `sigma`. No batch is normalized using future data
+to force exact empirical moments.
 
 ## Choosing parameters
 
@@ -125,7 +164,7 @@ the current experiment:
 
 - `MMD_ETA`: detection threshold for squared MMD; higher scores trigger changes.
 - `MMD_NU`: minimum coherence for recognizing a stored regime; higher is closer.
-- `PEARSON_TAU`: detection threshold for the Pearson-type score.
+- `PEARSON_ETA`: detection threshold for the Pearson-type score.
 - `PEARSON_NU`: maximum Pearson-type score for recognizing a stored regime;
   lower is closer.
 - `REG_LAMBDA`: Pearson operator regularization, with Gram ridge `n * lambda`.
@@ -178,7 +217,7 @@ mathematical background.
 
 | File or generated directory | Objective and behavior |
 |---|---|
-| [generation.py](data/generation.py) | Reusable synthetic generators. `generate_mean_shift_data()` creates Gaussian mean shifts; `generate_regime_stream()` varies Gaussian means and standard deviations; `sample_family()` samples the four T distribution families; `generate_moment_matched_stream()` assembles the recurring T1/T2/T3 sequence and its true change points. The first two helpers remain available but are not currently called by the mains. |
+| [generation.py](data/generation.py) | Reusable synthetic generators. `generate_mean_shift_data()` creates Gaussian mean shifts; `generate_regime_stream()` varies Gaussian means and standard deviations; `sample_family()` samples the four T distribution families; `generate_moment_matched_stream()` validates tier moments, assigns families to regime IDs per seed, and assembles the recurring sequence and true change points. Optional metadata records the realized assignment and population moments. The first two helpers remain available but are not currently called by the mains. |
 | [manage_pamap2.py](data/manage_pamap2.py) | Downloads and extracts PAMAP2 if needed, reads `Protocol/subject101.dat`, maps activity labels, and takes distinct blocks from contiguous activity runs. Uses forward filling within each run and discards leading missing values. Provides a three-channel hand-acceleration loader and a 40-feature loader excluding invalid orientation channels. Raises an error if the requested distinct blocks are unavailable. |
 | `openml/` | Generated MNIST download cache managed by scikit-learn. OpenML supplies an existing dataset; this directory is not a generator or Python module. |
 | `PAMAP2_Dataset/` | Generated directory holding the extracted PAMAP2 recordings. The loader skips downloading when this directory already exists. |
@@ -319,7 +358,7 @@ no matches display `N/A` (`null` for delay in JSON).
 
 Thresholds and regularization are preserved from the configured benchmarks,
 including arbitrary placeholders; this is not a tuned performance claim. In
-particular PAMAP2 retains Pearson `lambda=20`, `tau=0.80`, and `nu=0.71`.
+particular PAMAP2 retains Pearson `lambda=20`, `eta=0.80`, and `nu=0.71`.
 The detection score is bounded by `1/lambda=0.05`, so it cannot alarm at that
 threshold. Its runner explicitly disables the usual score-bound validation to
 measure the original configuration without silently replacing parameters.

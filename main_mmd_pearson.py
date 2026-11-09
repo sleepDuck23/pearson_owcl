@@ -17,8 +17,8 @@ MMD_ETA = 0.12
 MMD_NU = 0.90
 SEED = 42
 REG_LAMBDA = 0.1
-PEARSON_TAU = 0.4  # Arbitrary placeholder; adjust for this experiment.
-PEARSON_NU = 0.7  # Arbitrary placeholder; adjust for this experiment.
+PEARSON_ETA = 0.12  
+PEARSON_NU = 0.7  
 MAX_DELAY = M + K_CONF
 
 
@@ -38,7 +38,7 @@ def build_models():
         'Pearson': PearsonOWRCPD(
             n=N,
             m=M,
-            tau=PEARSON_TAU,
+            eta=PEARSON_ETA,
             nu=PEARSON_NU,
             k_conf=K_CONF,
             reg_lambda=REG_LAMBDA,
@@ -57,7 +57,7 @@ def main(show=True):
     models = build_models()
     validate_thresholds(
         {'MMD': dict(detection=models['MMD'].eta, novelty=models['MMD'].nu),
-         'Pearson': dict(detection=models['Pearson'].tau, novelty=models['Pearson'].nu)},
+         'Pearson': dict(detection=models['Pearson'].eta, novelty=models['Pearson'].nu)},
         models['Pearson'].reg_lambda)
     rng = np.random.RandomState(SEED)
     data = np.concatenate([sample(label, SEGMENT_LENGTH, rng) for label in SEQUENCE]).ravel()

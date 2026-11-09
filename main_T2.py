@@ -1,9 +1,15 @@
 """ICASSP section 5.2, T2: common mean and distinct variances."""
 
+from pathlib import Path
+import matplotlib.pyplot as plt
+
 from data.generation import generate_moment_matched_stream
 from model.owcl_mmd import OWR_CPD
 from model.owcl_pearson import PearsonOWRCPD
-from experiments.runner import labels_for_segments, print_aggregate, run_comparison, validate_thresholds
+from experiments.runner import (
+    labels_for_segments, print_aggregate, run_comparison, save_seed_report,
+    validate_thresholds,
+)
 
 # Reported paper settings: 700 observations per segment, three streams.
 N = 300
@@ -11,16 +17,18 @@ M = 100
 K_CONF = 6
 SEGMENT_LENGTH = 700
 SEEDS = (42, 43, 44)
+RANDOMIZE_FAMILIES = True  # Assign Gaussian/Laplace/Exponential/Uniform to IDs per seed.
+OUTPUT_DIR = Path(__file__).resolve().parent / 'results' / 'T2'
 
 # T1/T2 population values and all seeds are choices not specified in the PDF.
 MEANS = (0.0, 0.0, 0.0, 0.0)
 STDS = (1.0, 2.0, 0.5, 3.0)
-MMD_ETA = 0.1  # Arbitrary placeholder; adjust for this experiment.
-MMD_NU = 0.99                 # Table 1.
-PEARSON_TAU = 0.4  # Arbitrary placeholder; adjust for this experiment.
-PEARSON_NU = 0.7  # Arbitrary placeholder; adjust for this experiment.
-REG_LAMBDA = 0.1                # Pearson extension, not a reported ICASSP value.
-MAX_DELAY = M + K_CONF          # Explicit evaluation horizon, not a paper setting.
+MMD_ETA = 0.1  
+MMD_NU = 0.99                 
+PEARSON_ETA = 0.15  
+PEARSON_NU = 0.15  
+REG_LAMBDA = 0.1                
+MAX_DELAY = M + K_CONF          
 
 
 def build_models():
@@ -39,7 +47,7 @@ def build_models():
         'Pearson': PearsonOWRCPD(
             n=N,
             m=M,
-            tau=PEARSON_TAU,
+            eta=PEARSON_ETA,
             nu=PEARSON_NU,
             k_conf=K_CONF,
             reg_lambda=REG_LAMBDA,
@@ -51,25 +59,32 @@ def build_models():
     }
 
 
-def main(show=True):
+def main(show=True, output_dir=None):
+    """Print each seed separately; display all seed figures after the final run."""
     models = build_models()
     validate_thresholds(
         {'MMD': dict(detection=models['MMD'].eta, novelty=models['MMD'].nu),
-         'Pearson': dict(detection=models['Pearson'].tau, novelty=models['Pearson'].nu)},
+         'Pearson': dict(detection=models['Pearson'].eta, novelty=models['Pearson'].nu)},
         models['Pearson'].reg_lambda)
     runs = []
     for index, seed in enumerate(SEEDS):
         if index:
             models = build_models()
-        data, cps, sequence = generate_moment_matched_stream(
-            'T2', SEGMENT_LENGTH, seed, MEANS, STDS)
+        data, cps, sequence, stream_metadata = generate_moment_matched_stream(
+            'T2', SEGMENT_LENGTH, seed, MEANS, STDS,
+            randomize_families=RANDOMIZE_FAMILIES, return_metadata=True)
         runs.append(run_comparison(
             data, cps, labels_for_segments(sequence, SEGMENT_LENGTH),
             title=f'T2, seed={seed}', models=models,
-            max_delay=MAX_DELAY, show=show, seed=seed))
-    print_aggregate(runs)
-    return dict(runs=runs)
+            max_delay=MAX_DELAY, show=show, seed=seed,
+            plot_dir=output_dir, block=False, stream_metadata=stream_metadata))
+    aggregate = print_aggregate(runs)
+    report = save_seed_report(runs, output_dir, 'T2') if output_dir is not None else None
+    if show:
+        # Display every seed's figures together after all results have printed.
+        plt.show()
+    return dict(runs=runs, aggregate=aggregate, report=report)
 
 
 if __name__ == '__main__':
-    main()
+    main(output_dir=OUTPUT_DIR)

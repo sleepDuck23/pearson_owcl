@@ -1,0 +1,1472 @@
+{
+  "runs": [
+    {
+      "config": {
+        "title": "T2, seed=42",
+        "seed": 42,
+        "max_delay": 106,
+        "stream_metadata": {
+          "tier": "T2",
+          "seed": 42,
+          "segment_length": 700,
+          "randomize_families": true,
+          "regimes": [
+            {
+              "regime": 1,
+              "distribution": "Laplace",
+              "mean": 0.0,
+              "std": 1.0
+            },
+            {
+              "regime": 2,
+              "distribution": "Uniform",
+              "mean": 0.0,
+              "std": 2.0
+            },
+            {
+              "regime": 3,
+              "distribution": "Gaussian",
+              "mean": 0.0,
+              "std": 0.5
+            },
+            {
+              "regime": 4,
+              "distribution": "Exponential",
+              "mean": 0.0,
+              "std": 3.0
+            }
+          ]
+        },
+        "model_parameters": {
+          "MMD": {
+            "n": 300,
+            "m": 100,
+            "k_conf": 6,
+            "gamma": 0.1,
+            "factor": 1.0,
+            "dynamic_gamma": true,
+            "eta": 0.1,
+            "nu": 0.99
+          },
+          "Pearson": {
+            "n": 300,
+            "m": 100,
+            "k_conf": 6,
+            "gamma": 0.1,
+            "factor": 1.0,
+            "dynamic_gamma": true,
+            "eta": 0.15,
+            "nu": 0.15,
+            "reg_lambda": 0.1,
+            "normalize_distance": false
+          }
+        },
+        "stream_length": 8400,
+        "stream_sha256": "b5d1e6a1fa63cf9bf8ebf0d49dd30d5ae3aaf6c255d71d8664fb059cb787eda2",
+        "true_cps": [
+          700,
+          1400,
+          2100,
+          2800,
+          3500,
+          4200,
+          4900,
+          5600,
+          6300,
+          7000,
+          7700
+        ],
+        "episode_labels": [
+          1,
+          2,
+          3,
+          4,
+          2,
+          1,
+          4,
+          3,
+          1,
+          4,
+          2,
+          3
+        ]
+      },
+      "thresholds": {
+        "MMD": {
+          "detection": 0.1,
+          "novelty": 0.99
+        },
+        "Pearson": {
+          "detection": 0.15,
+          "novelty": 0.15
+        }
+      },
+      "metrics": {
+        "MMD": {
+          "matches": [
+            [
+              700,
+              772
+            ],
+            [
+              1400,
+              1471
+            ],
+            [
+              2100,
+              2149
+            ],
+            [
+              3500,
+              3602
+            ],
+            [
+              4200,
+              4253
+            ],
+            [
+              4900,
+              4967
+            ],
+            [
+              6300,
+              6371
+            ],
+            [
+              7700,
+              7776
+            ]
+          ],
+          "delays": [
+            72,
+            71,
+            49,
+            102,
+            53,
+            67,
+            71,
+            76
+          ],
+          "false_alarms": [],
+          "ignored_warmup_alarms": [],
+          "missed_changes": [
+            2800,
+            5600,
+            7000
+          ],
+          "detected_count": 8,
+          "change_total": 11,
+          "false_alarm_count": 0,
+          "delay_sum": 561,
+          "mean_delay": 70.125,
+          "max_delay": 106,
+          "recall_correct": 5,
+          "recall_total": 8,
+          "novel_correct": 3,
+          "novel_total": 3,
+          "mapping": {
+            "1": 0,
+            "2": 1,
+            "3": 2,
+            "4": 3
+          },
+          "episodes": [
+            {
+              "start": 0,
+              "end": 700,
+              "label": 1,
+              "returning": false,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 700,
+              "end": 1400,
+              "label": 2,
+              "returning": false,
+              "correct": true,
+              "alarm": 772,
+              "assignment_time": 1072,
+              "model_id": 1
+            },
+            {
+              "start": 1400,
+              "end": 2100,
+              "label": 3,
+              "returning": false,
+              "correct": true,
+              "alarm": 1471,
+              "assignment_time": 1771,
+              "model_id": 2
+            },
+            {
+              "start": 2100,
+              "end": 2800,
+              "label": 4,
+              "returning": false,
+              "correct": true,
+              "alarm": 2149,
+              "assignment_time": 2449,
+              "model_id": 3
+            },
+            {
+              "start": 2800,
+              "end": 3500,
+              "label": 2,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 3500,
+              "end": 4200,
+              "label": 1,
+              "returning": true,
+              "correct": true,
+              "alarm": 3602,
+              "assignment_time": 3902,
+              "model_id": 0
+            },
+            {
+              "start": 4200,
+              "end": 4900,
+              "label": 4,
+              "returning": true,
+              "correct": true,
+              "alarm": 4253,
+              "assignment_time": 4553,
+              "model_id": 3
+            },
+            {
+              "start": 4900,
+              "end": 5600,
+              "label": 3,
+              "returning": true,
+              "correct": true,
+              "alarm": 4967,
+              "assignment_time": 5267,
+              "model_id": 2
+            },
+            {
+              "start": 5600,
+              "end": 6300,
+              "label": 1,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 6300,
+              "end": 7000,
+              "label": 4,
+              "returning": true,
+              "correct": true,
+              "alarm": 6371,
+              "assignment_time": 6671,
+              "model_id": 3
+            },
+            {
+              "start": 7000,
+              "end": 7700,
+              "label": 2,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 7700,
+              "end": 8400,
+              "label": 3,
+              "returning": true,
+              "correct": true,
+              "alarm": 7776,
+              "assignment_time": 8076,
+              "model_id": 2
+            }
+          ]
+        },
+        "Pearson": {
+          "matches": [
+            [
+              700,
+              769
+            ],
+            [
+              1400,
+              1458
+            ],
+            [
+              2100,
+              2144
+            ],
+            [
+              3500,
+              3582
+            ],
+            [
+              4200,
+              4243
+            ],
+            [
+              4900,
+              4944
+            ],
+            [
+              6300,
+              6368
+            ],
+            [
+              7700,
+              7766
+            ]
+          ],
+          "delays": [
+            69,
+            58,
+            44,
+            82,
+            43,
+            44,
+            68,
+            66
+          ],
+          "false_alarms": [],
+          "ignored_warmup_alarms": [],
+          "missed_changes": [
+            2800,
+            5600,
+            7000
+          ],
+          "detected_count": 8,
+          "change_total": 11,
+          "false_alarm_count": 0,
+          "delay_sum": 474,
+          "mean_delay": 59.25,
+          "max_delay": 106,
+          "recall_correct": 1,
+          "recall_total": 8,
+          "novel_correct": 1,
+          "novel_total": 3,
+          "mapping": {
+            "1": 0,
+            "2": 1
+          },
+          "episodes": [
+            {
+              "start": 0,
+              "end": 700,
+              "label": 1,
+              "returning": false,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 700,
+              "end": 1400,
+              "label": 2,
+              "returning": false,
+              "correct": true,
+              "alarm": 769,
+              "assignment_time": 1069,
+              "model_id": 1
+            },
+            {
+              "start": 1400,
+              "end": 2100,
+              "label": 3,
+              "returning": false,
+              "correct": false,
+              "alarm": 1458,
+              "assignment_time": 1758,
+              "model_id": 0
+            },
+            {
+              "start": 2100,
+              "end": 2800,
+              "label": 4,
+              "returning": false,
+              "correct": false,
+              "alarm": 2144,
+              "assignment_time": 2444,
+              "model_id": 1
+            },
+            {
+              "start": 2800,
+              "end": 3500,
+              "label": 2,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 3500,
+              "end": 4200,
+              "label": 1,
+              "returning": true,
+              "correct": true,
+              "alarm": 3582,
+              "assignment_time": 3882,
+              "model_id": 0
+            },
+            {
+              "start": 4200,
+              "end": 4900,
+              "label": 4,
+              "returning": true,
+              "correct": false,
+              "alarm": 4243,
+              "assignment_time": 4543,
+              "model_id": 1
+            },
+            {
+              "start": 4900,
+              "end": 5600,
+              "label": 3,
+              "returning": true,
+              "correct": false,
+              "alarm": 4944,
+              "assignment_time": 5244,
+              "model_id": 0
+            },
+            {
+              "start": 5600,
+              "end": 6300,
+              "label": 1,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 6300,
+              "end": 7000,
+              "label": 4,
+              "returning": true,
+              "correct": false,
+              "alarm": 6368,
+              "assignment_time": 6668,
+              "model_id": 1
+            },
+            {
+              "start": 7000,
+              "end": 7700,
+              "label": 2,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 7700,
+              "end": 8400,
+              "label": 3,
+              "returning": true,
+              "correct": false,
+              "alarm": 7766,
+              "assignment_time": 8066,
+              "model_id": 0
+            }
+          ]
+        }
+      },
+      "plots": {
+        "scores": "/Users/bamorim/Documents/GitHub/pearson_x2/results/T2/seed_42_scores.png",
+        "regimes": "/Users/bamorim/Documents/GitHub/pearson_x2/results/T2/seed_42_regimes.png"
+      }
+    },
+    {
+      "config": {
+        "title": "T2, seed=43",
+        "seed": 43,
+        "max_delay": 106,
+        "stream_metadata": {
+          "tier": "T2",
+          "seed": 43,
+          "segment_length": 700,
+          "randomize_families": true,
+          "regimes": [
+            {
+              "regime": 1,
+              "distribution": "Exponential",
+              "mean": 0.0,
+              "std": 1.0
+            },
+            {
+              "regime": 2,
+              "distribution": "Laplace",
+              "mean": 0.0,
+              "std": 2.0
+            },
+            {
+              "regime": 3,
+              "distribution": "Uniform",
+              "mean": 0.0,
+              "std": 0.5
+            },
+            {
+              "regime": 4,
+              "distribution": "Gaussian",
+              "mean": 0.0,
+              "std": 3.0
+            }
+          ]
+        },
+        "model_parameters": {
+          "MMD": {
+            "n": 300,
+            "m": 100,
+            "k_conf": 6,
+            "gamma": 0.1,
+            "factor": 1.0,
+            "dynamic_gamma": true,
+            "eta": 0.1,
+            "nu": 0.99
+          },
+          "Pearson": {
+            "n": 300,
+            "m": 100,
+            "k_conf": 6,
+            "gamma": 0.1,
+            "factor": 1.0,
+            "dynamic_gamma": true,
+            "eta": 0.15,
+            "nu": 0.15,
+            "reg_lambda": 0.1,
+            "normalize_distance": false
+          }
+        },
+        "stream_length": 8400,
+        "stream_sha256": "c04f04804d70f37da5b0ae1e082c77241fe9155f8469dc53071a3ca9cf15c859",
+        "true_cps": [
+          700,
+          1400,
+          2100,
+          2800,
+          3500,
+          4200,
+          4900,
+          5600,
+          6300,
+          7000,
+          7700
+        ],
+        "episode_labels": [
+          1,
+          2,
+          3,
+          4,
+          2,
+          1,
+          4,
+          3,
+          1,
+          4,
+          2,
+          3
+        ]
+      },
+      "thresholds": {
+        "MMD": {
+          "detection": 0.1,
+          "novelty": 0.99
+        },
+        "Pearson": {
+          "detection": 0.15,
+          "novelty": 0.15
+        }
+      },
+      "metrics": {
+        "MMD": {
+          "matches": [
+            [
+              700,
+              804
+            ],
+            [
+              1400,
+              1501
+            ],
+            [
+              2100,
+              2155
+            ],
+            [
+              4200,
+              4287
+            ],
+            [
+              4900,
+              4969
+            ],
+            [
+              6300,
+              6359
+            ]
+          ],
+          "delays": [
+            104,
+            101,
+            55,
+            87,
+            69,
+            59
+          ],
+          "false_alarms": [],
+          "ignored_warmup_alarms": [],
+          "missed_changes": [
+            2800,
+            3500,
+            5600,
+            7000,
+            7700
+          ],
+          "detected_count": 6,
+          "change_total": 11,
+          "false_alarm_count": 0,
+          "delay_sum": 475,
+          "mean_delay": 79.16666666666667,
+          "max_delay": 106,
+          "recall_correct": 3,
+          "recall_total": 8,
+          "novel_correct": 3,
+          "novel_total": 3,
+          "mapping": {
+            "1": 0,
+            "2": 1,
+            "3": 2,
+            "4": 3
+          },
+          "episodes": [
+            {
+              "start": 0,
+              "end": 700,
+              "label": 1,
+              "returning": false,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 700,
+              "end": 1400,
+              "label": 2,
+              "returning": false,
+              "correct": true,
+              "alarm": 804,
+              "assignment_time": 1104,
+              "model_id": 1
+            },
+            {
+              "start": 1400,
+              "end": 2100,
+              "label": 3,
+              "returning": false,
+              "correct": true,
+              "alarm": 1501,
+              "assignment_time": 1801,
+              "model_id": 2
+            },
+            {
+              "start": 2100,
+              "end": 2800,
+              "label": 4,
+              "returning": false,
+              "correct": true,
+              "alarm": 2155,
+              "assignment_time": 2455,
+              "model_id": 3
+            },
+            {
+              "start": 2800,
+              "end": 3500,
+              "label": 2,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 3500,
+              "end": 4200,
+              "label": 1,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 4200,
+              "end": 4900,
+              "label": 4,
+              "returning": true,
+              "correct": true,
+              "alarm": 4287,
+              "assignment_time": 4587,
+              "model_id": 3
+            },
+            {
+              "start": 4900,
+              "end": 5600,
+              "label": 3,
+              "returning": true,
+              "correct": true,
+              "alarm": 4969,
+              "assignment_time": 5269,
+              "model_id": 2
+            },
+            {
+              "start": 5600,
+              "end": 6300,
+              "label": 1,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 6300,
+              "end": 7000,
+              "label": 4,
+              "returning": true,
+              "correct": true,
+              "alarm": 6359,
+              "assignment_time": 6659,
+              "model_id": 3
+            },
+            {
+              "start": 7000,
+              "end": 7700,
+              "label": 2,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 7700,
+              "end": 8400,
+              "label": 3,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            }
+          ]
+        },
+        "Pearson": {
+          "matches": [
+            [
+              700,
+              798
+            ],
+            [
+              1400,
+              1491
+            ],
+            [
+              2100,
+              2154
+            ],
+            [
+              4200,
+              4272
+            ],
+            [
+              4900,
+              4957
+            ],
+            [
+              5600,
+              5694
+            ],
+            [
+              6300,
+              6356
+            ]
+          ],
+          "delays": [
+            98,
+            91,
+            54,
+            72,
+            57,
+            94,
+            56
+          ],
+          "false_alarms": [],
+          "ignored_warmup_alarms": [],
+          "missed_changes": [
+            2800,
+            3500,
+            7000,
+            7700
+          ],
+          "detected_count": 7,
+          "change_total": 11,
+          "false_alarm_count": 0,
+          "delay_sum": 522,
+          "mean_delay": 74.57142857142857,
+          "max_delay": 106,
+          "recall_correct": 0,
+          "recall_total": 8,
+          "novel_correct": 1,
+          "novel_total": 3,
+          "mapping": {
+            "1": 0,
+            "2": 1
+          },
+          "episodes": [
+            {
+              "start": 0,
+              "end": 700,
+              "label": 1,
+              "returning": false,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 700,
+              "end": 1400,
+              "label": 2,
+              "returning": false,
+              "correct": true,
+              "alarm": 798,
+              "assignment_time": 1098,
+              "model_id": 1
+            },
+            {
+              "start": 1400,
+              "end": 2100,
+              "label": 3,
+              "returning": false,
+              "correct": false,
+              "alarm": 1491,
+              "assignment_time": 1791,
+              "model_id": 0
+            },
+            {
+              "start": 2100,
+              "end": 2800,
+              "label": 4,
+              "returning": false,
+              "correct": false,
+              "alarm": 2154,
+              "assignment_time": 2454,
+              "model_id": 1
+            },
+            {
+              "start": 2800,
+              "end": 3500,
+              "label": 2,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 3500,
+              "end": 4200,
+              "label": 1,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 4200,
+              "end": 4900,
+              "label": 4,
+              "returning": true,
+              "correct": false,
+              "alarm": 4272,
+              "assignment_time": 4572,
+              "model_id": 1
+            },
+            {
+              "start": 4900,
+              "end": 5600,
+              "label": 3,
+              "returning": true,
+              "correct": false,
+              "alarm": 4957,
+              "assignment_time": 5257,
+              "model_id": 0
+            },
+            {
+              "start": 5600,
+              "end": 6300,
+              "label": 1,
+              "returning": true,
+              "correct": false,
+              "alarm": 5694,
+              "assignment_time": 5994,
+              "model_id": 2
+            },
+            {
+              "start": 6300,
+              "end": 7000,
+              "label": 4,
+              "returning": true,
+              "correct": false,
+              "alarm": 6356,
+              "assignment_time": 6656,
+              "model_id": 1
+            },
+            {
+              "start": 7000,
+              "end": 7700,
+              "label": 2,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 7700,
+              "end": 8400,
+              "label": 3,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            }
+          ]
+        }
+      },
+      "plots": {
+        "scores": "/Users/bamorim/Documents/GitHub/pearson_x2/results/T2/seed_43_scores.png",
+        "regimes": "/Users/bamorim/Documents/GitHub/pearson_x2/results/T2/seed_43_regimes.png"
+      }
+    },
+    {
+      "config": {
+        "title": "T2, seed=44",
+        "seed": 44,
+        "max_delay": 106,
+        "stream_metadata": {
+          "tier": "T2",
+          "seed": 44,
+          "segment_length": 700,
+          "randomize_families": true,
+          "regimes": [
+            {
+              "regime": 1,
+              "distribution": "Uniform",
+              "mean": 0.0,
+              "std": 1.0
+            },
+            {
+              "regime": 2,
+              "distribution": "Exponential",
+              "mean": 0.0,
+              "std": 2.0
+            },
+            {
+              "regime": 3,
+              "distribution": "Laplace",
+              "mean": 0.0,
+              "std": 0.5
+            },
+            {
+              "regime": 4,
+              "distribution": "Gaussian",
+              "mean": 0.0,
+              "std": 3.0
+            }
+          ]
+        },
+        "model_parameters": {
+          "MMD": {
+            "n": 300,
+            "m": 100,
+            "k_conf": 6,
+            "gamma": 0.1,
+            "factor": 1.0,
+            "dynamic_gamma": true,
+            "eta": 0.1,
+            "nu": 0.99
+          },
+          "Pearson": {
+            "n": 300,
+            "m": 100,
+            "k_conf": 6,
+            "gamma": 0.1,
+            "factor": 1.0,
+            "dynamic_gamma": true,
+            "eta": 0.15,
+            "nu": 0.15,
+            "reg_lambda": 0.1,
+            "normalize_distance": false
+          }
+        },
+        "stream_length": 8400,
+        "stream_sha256": "a576fed17b27c1ed089ee818577789cc4e188efd2b122309191202d9a0fe051d",
+        "true_cps": [
+          700,
+          1400,
+          2100,
+          2800,
+          3500,
+          4200,
+          4900,
+          5600,
+          6300,
+          7000,
+          7700
+        ],
+        "episode_labels": [
+          1,
+          2,
+          3,
+          4,
+          2,
+          1,
+          4,
+          3,
+          1,
+          4,
+          2,
+          3
+        ]
+      },
+      "thresholds": {
+        "MMD": {
+          "detection": 0.1,
+          "novelty": 0.99
+        },
+        "Pearson": {
+          "detection": 0.15,
+          "novelty": 0.15
+        }
+      },
+      "metrics": {
+        "MMD": {
+          "matches": [
+            [
+              700,
+              789
+            ],
+            [
+              1400,
+              1460
+            ],
+            [
+              2100,
+              2164
+            ],
+            [
+              4900,
+              4994
+            ],
+            [
+              5600,
+              5670
+            ],
+            [
+              6300,
+              6377
+            ]
+          ],
+          "delays": [
+            89,
+            60,
+            64,
+            94,
+            70,
+            77
+          ],
+          "false_alarms": [],
+          "ignored_warmup_alarms": [],
+          "missed_changes": [
+            2800,
+            3500,
+            4200,
+            7000,
+            7700
+          ],
+          "detected_count": 6,
+          "change_total": 11,
+          "false_alarm_count": 0,
+          "delay_sum": 454,
+          "mean_delay": 75.66666666666667,
+          "max_delay": 106,
+          "recall_correct": 3,
+          "recall_total": 8,
+          "novel_correct": 3,
+          "novel_total": 3,
+          "mapping": {
+            "1": 0,
+            "2": 1,
+            "3": 2,
+            "4": 3
+          },
+          "episodes": [
+            {
+              "start": 0,
+              "end": 700,
+              "label": 1,
+              "returning": false,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 700,
+              "end": 1400,
+              "label": 2,
+              "returning": false,
+              "correct": true,
+              "alarm": 789,
+              "assignment_time": 1089,
+              "model_id": 1
+            },
+            {
+              "start": 1400,
+              "end": 2100,
+              "label": 3,
+              "returning": false,
+              "correct": true,
+              "alarm": 1460,
+              "assignment_time": 1760,
+              "model_id": 2
+            },
+            {
+              "start": 2100,
+              "end": 2800,
+              "label": 4,
+              "returning": false,
+              "correct": true,
+              "alarm": 2164,
+              "assignment_time": 2464,
+              "model_id": 3
+            },
+            {
+              "start": 2800,
+              "end": 3500,
+              "label": 2,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 3500,
+              "end": 4200,
+              "label": 1,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 4200,
+              "end": 4900,
+              "label": 4,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 4900,
+              "end": 5600,
+              "label": 3,
+              "returning": true,
+              "correct": true,
+              "alarm": 4994,
+              "assignment_time": 5294,
+              "model_id": 2
+            },
+            {
+              "start": 5600,
+              "end": 6300,
+              "label": 1,
+              "returning": true,
+              "correct": true,
+              "alarm": 5670,
+              "assignment_time": 5970,
+              "model_id": 0
+            },
+            {
+              "start": 6300,
+              "end": 7000,
+              "label": 4,
+              "returning": true,
+              "correct": true,
+              "alarm": 6377,
+              "assignment_time": 6677,
+              "model_id": 3
+            },
+            {
+              "start": 7000,
+              "end": 7700,
+              "label": 2,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 7700,
+              "end": 8400,
+              "label": 3,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            }
+          ]
+        },
+        "Pearson": {
+          "matches": [
+            [
+              700,
+              781
+            ],
+            [
+              1400,
+              1451
+            ],
+            [
+              2100,
+              2165
+            ],
+            [
+              4200,
+              4282
+            ],
+            [
+              4900,
+              4975
+            ],
+            [
+              5600,
+              5668
+            ],
+            [
+              6300,
+              6369
+            ]
+          ],
+          "delays": [
+            81,
+            51,
+            65,
+            82,
+            75,
+            68,
+            69
+          ],
+          "false_alarms": [],
+          "ignored_warmup_alarms": [],
+          "missed_changes": [
+            2800,
+            3500,
+            7000,
+            7700
+          ],
+          "detected_count": 7,
+          "change_total": 11,
+          "false_alarm_count": 0,
+          "delay_sum": 491,
+          "mean_delay": 70.14285714285714,
+          "max_delay": 106,
+          "recall_correct": 4,
+          "recall_total": 8,
+          "novel_correct": 3,
+          "novel_total": 3,
+          "mapping": {
+            "1": 0,
+            "2": 1,
+            "3": 2,
+            "4": 3
+          },
+          "episodes": [
+            {
+              "start": 0,
+              "end": 700,
+              "label": 1,
+              "returning": false,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 700,
+              "end": 1400,
+              "label": 2,
+              "returning": false,
+              "correct": true,
+              "alarm": 781,
+              "assignment_time": 1081,
+              "model_id": 1
+            },
+            {
+              "start": 1400,
+              "end": 2100,
+              "label": 3,
+              "returning": false,
+              "correct": true,
+              "alarm": 1451,
+              "assignment_time": 1751,
+              "model_id": 2
+            },
+            {
+              "start": 2100,
+              "end": 2800,
+              "label": 4,
+              "returning": false,
+              "correct": true,
+              "alarm": 2165,
+              "assignment_time": 2465,
+              "model_id": 3
+            },
+            {
+              "start": 2800,
+              "end": 3500,
+              "label": 2,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 3500,
+              "end": 4200,
+              "label": 1,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 4200,
+              "end": 4900,
+              "label": 4,
+              "returning": true,
+              "correct": true,
+              "alarm": 4282,
+              "assignment_time": 4582,
+              "model_id": 3
+            },
+            {
+              "start": 4900,
+              "end": 5600,
+              "label": 3,
+              "returning": true,
+              "correct": true,
+              "alarm": 4975,
+              "assignment_time": 5275,
+              "model_id": 2
+            },
+            {
+              "start": 5600,
+              "end": 6300,
+              "label": 1,
+              "returning": true,
+              "correct": true,
+              "alarm": 5668,
+              "assignment_time": 5968,
+              "model_id": 0
+            },
+            {
+              "start": 6300,
+              "end": 7000,
+              "label": 4,
+              "returning": true,
+              "correct": true,
+              "alarm": 6369,
+              "assignment_time": 6669,
+              "model_id": 3
+            },
+            {
+              "start": 7000,
+              "end": 7700,
+              "label": 2,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            },
+            {
+              "start": 7700,
+              "end": 8400,
+              "label": 3,
+              "returning": true,
+              "correct": false,
+              "alarm": null,
+              "assignment_time": null,
+              "model_id": null
+            }
+          ]
+        }
+      },
+      "plots": {
+        "scores": "/Users/bamorim/Documents/GitHub/pearson_x2/results/T2/seed_44_scores.png",
+        "regimes": "/Users/bamorim/Documents/GitHub/pearson_x2/results/T2/seed_44_regimes.png"
+      }
+    }
+  ],
+  "aggregate": {
+    "MMD": {
+      "detected_count": 20,
+      "change_total": 33,
+      "false_alarm_count": 0,
+      "delay_sum": 1490,
+      "novel_correct": 9,
+      "novel_total": 9,
+      "recall_correct": 11,
+      "recall_total": 24,
+      "mean_delay": 74.5,
+      "max_delay": 106
+    },
+    "Pearson": {
+      "detected_count": 22,
+      "change_total": 33,
+      "false_alarm_count": 0,
+      "delay_sum": 1487,
+      "novel_correct": 5,
+      "novel_total": 9,
+      "recall_correct": 5,
+      "recall_total": 24,
+      "mean_delay": 67.5909090909091,
+      "max_delay": 106
+    }
+  }
+}

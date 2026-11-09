@@ -1,14 +1,19 @@
 import contextlib
 import copy
 import io
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import numpy as np
 
 from experiments.evaluation import evaluate_changepoints, evaluate_recognition
-from data.generation import generate_moment_matched_stream
+from data.generation import (
+    DISTRIBUTION_FAMILIES, SEQUENCE, generate_moment_matched_stream, sample_family,
+)
 from model.owcl_mmd import OWR_CPD
 from model.owcl_pearson import PearsonOWRCPD
 from main_mnist import build_mnist_stream, load_mnist_partitions
@@ -19,7 +24,7 @@ def make_model(name, n, m, k_conf, detection, novelty, reg_lambda=0.1):
     common = dict(n=n, m=m, k_conf=k_conf)
     if name == 'MMD':
         return OWR_CPD(eta=detection, nu=novelty, **common)
-    return PearsonOWRCPD(tau=detection, nu=novelty, reg_lambda=reg_lambda, **common)
+    return PearsonOWRCPD(eta=detection, nu=novelty, reg_lambda=reg_lambda, **common)
 
 
 class ModelTests(unittest.TestCase):
@@ -89,6 +94,75 @@ class ModelTests(unittest.TestCase):
             T = features[:8].T @ features[:8] / 8
             expected = 0.5 * delta @ np.linalg.solve(T + 0.1 * np.eye(11), delta)
             self.assertAlmostEqual(score, expected, places=10)
+
+
+class StreamGenerationTests(unittest.TestCase):
+    def test_seeded_family_permutation_is_reproducible_and_fixed_on_returns(self):
+        assignments = []
+        for seed in (42, 43, 44):
+            with patch('data.generation.sample_family', wraps=sample_family) as sample:
+                data, cps, sequence, metadata = generate_moment_matched_stream(
+                    'T1', segment_length=20, seed=seed, return_metadata=True)
+            families = [regime['distribution'] for regime in metadata['regimes']]
+            assignments.append(tuple(families))
+            self.assertCountEqual(families, DISTRIBUTION_FAMILIES)
+            for label, invocation in zip(sequence, sample.call_args_list):
+                self.assertEqual(invocation.kwargs['family'], families[label - 1])
+            for label in set(sequence):
+                episodes = [data[i * 20:(i + 1) * 20] for i, value in enumerate(sequence)
+                            if value == label]
+                self.assertFalse(np.array_equal(episodes[0], episodes[1]))
+            repeated, repeated_cps, repeated_seq, repeated_meta = generate_moment_matched_stream(
+                'T1', segment_length=20, seed=seed, return_metadata=True)
+            np.testing.assert_array_equal(data, repeated)
+            self.assertEqual((cps, sequence, metadata), (repeated_cps, repeated_seq, repeated_meta))
+        self.assertEqual(len(set(assignments)), 3)
+
+    def test_population_moment_constraints_and_seed_independent_values(self):
+        reference = {}
+        for seed in (42, 43, 44):
+            family_orders = []
+            for tier in ('T1', 'T2', 'T3'):
+                _, _, _, metadata = generate_moment_matched_stream(
+                    tier, segment_length=10, seed=seed, return_metadata=True)
+                means = [r['mean'] for r in metadata['regimes']]
+                stds = [r['std'] for r in metadata['regimes']]
+                self.assertEqual(len(set(means)), 4 if tier == 'T1' else 1)
+                self.assertEqual(len(set(stds)), 4 if tier == 'T2' else 1)
+                reference.setdefault(tier, (means, stds))
+                self.assertEqual((means, stds), reference[tier])
+                family_orders.append([r['distribution'] for r in metadata['regimes']])
+            self.assertEqual(family_orders[0], family_orders[1])
+            self.assertEqual(family_orders[1], family_orders[2])
+
+    def test_each_family_has_the_requested_mean_and_std(self):
+        for family in DISTRIBUTION_FAMILIES:
+            with self.subTest(family=family):
+                data = sample_family(2, 200_000, np.random.RandomState(781),
+                                     [0, 2.5, 0, 0], [1, 1.7, 1, 1], family=family)
+                self.assertAlmostEqual(float(data.mean()), 2.5, delta=0.025 * 1.7)
+                self.assertAlmostEqual(float(data.std()), 1.7, delta=0.025 * 1.7)
+
+    def test_invalid_tier_moments_are_rejected(self):
+        cases = [('T1', [0, 1, 2, 3], [1, 1, 2, 1]),
+                 ('T1', [0, 0, 1, 2], [1, 1, 1, 1]),
+                 ('T2', [0, 1, 0, 0], [1, 2, 3, 4]),
+                 ('T2', [0, 0, 0, 0], [1, 1, 2, 3]),
+                 ('T3', [0, 0, 1, 0], [1, 1, 1, 1]),
+                 ('T3', [0, 0, 0, 0], [1, 2, 1, 1]),
+                 ('T3', [0, 0, 0, 0], [0, 0, 0, 0]),
+                 ('T3', [0, 0, 0, 0], [1, 1, float('nan'), 1])]
+        for tier, means, stds in cases:
+            with self.subTest(tier=tier, means=means, stds=stds), self.assertRaises(ValueError):
+                generate_moment_matched_stream(tier, means=means, stds=stds)
+
+    def test_disabling_shuffle_reproduces_the_historical_stream(self):
+        actual, _, _ = generate_moment_matched_stream(
+            'T1', segment_length=20, seed=42, randomize_families=False)
+        rng = np.random.RandomState(42)
+        expected = np.concatenate([sample_family(label, 20, rng, [0, 3, -3, 6], [1] * 4)
+                                   for label in SEQUENCE]).ravel()
+        np.testing.assert_array_equal(actual, expected)
 
 
 class EvaluationTests(unittest.TestCase):
@@ -212,6 +286,57 @@ class EvaluationTests(unittest.TestCase):
 
 
 class ExperimentTests(unittest.TestCase):
+    def test_benchmark_report_saves_the_family_assignment_for_every_seed(self):
+        import main_T1
+        from experiments.benchmark import main as benchmark_main
+        with TemporaryDirectory() as directory:
+            with patch.multiple(main_T1, N=8, M=3, K_CONF=2, SEGMENT_LENGTH=20,
+                                SEEDS=(42, 43, 44), MAX_DELAY=8):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    result = benchmark_main(['--benchmarks', 'T1', '--output-dir', directory])
+            runs = result['benchmarks']['T1']['runs']
+            self.assertEqual([r['config']['stream_metadata']['seed'] for r in runs], [42, 43, 44])
+            report = (Path(directory) / 'benchmark_report.md').read_text()
+            for seed in (42, 43, 44):
+                self.assertIn(f'Seed {seed} distribution assignment:', report)
+            saved = json.loads((Path(directory) / 'benchmark_results.json').read_text())
+            self.assertEqual(saved['benchmarks']['T1']['runs'][0]['config']['stream_metadata'],
+                             runs[0]['config']['stream_metadata'])
+
+    def test_tier_prints_and_saves_each_seed_before_blocking_on_plots(self):
+        import main_T1
+        import matplotlib.pyplot as plt
+        self.addCleanup(plt.close, 'all')
+        with TemporaryDirectory() as directory:
+            output = io.StringIO()
+            with patch.multiple(main_T1, N=8, M=3, K_CONF=2, SEGMENT_LENGTH=20,
+                                SEEDS=(42, 43, 44), MAX_DELAY=8):
+                with patch('experiments.runner.plt.show') as show:
+                    with contextlib.redirect_stdout(output):
+                        result = main_T1.main(show=True, output_dir=directory)
+            self.assertEqual(show.call_args_list,
+                             [call(block=False), call(block=False), call(block=False), call()])
+            self.assertEqual([run['config']['seed'] for run in result['runs']], [42, 43, 44])
+            for name in ('MMD', 'Pearson'):
+                self.assertEqual(len({id(run['models'][name]) for run in result['runs']}), 3)
+            self.assertEqual(len({run['config']['stream_sha256'] for run in result['runs']}), 3)
+            for seed in (42, 43, 44):
+                self.assertIn(f'T1, seed={seed}', output.getvalue())
+                for kind in ('scores', 'regimes'):
+                    path = Path(directory) / f'seed_{seed}_{kind}.png'
+                    self.assertTrue(path.read_bytes().startswith(b'\x89PNG'))
+            saved = json.loads((Path(directory) / 'results.json').read_text())
+            self.assertEqual([run['config']['seed'] for run in saved['runs']], [42, 43, 44])
+            for seed in (42, 43, 44):
+                self.assertIn(f'## Seed {seed}', Path(result['report']).read_text())
+            for run in saved['runs']:
+                metadata = run['config']['stream_metadata']
+                self.assertEqual(metadata['seed'], run['config']['seed'])
+                self.assertCountEqual([r['distribution'] for r in metadata['regimes']],
+                                      DISTRIBUTION_FAMILIES)
+            self.assertIn('Population mean', output.getvalue())
+            self.assertIn('Population std', Path(result['report']).read_text())
+
     def test_runner_pairs_observations_and_model_rng_without_passing_truth(self):
         from experiments.runner import run_comparison
         observations, draws, models = {}, {}, {}
@@ -247,7 +372,7 @@ class ExperimentTests(unittest.TestCase):
         models = {
             'MMD': OWR_CPD(n=8, m=3, eta=0.11, nu=0.82, k_conf=2,
                            gamma=0.25, factor=1.75, dynamic_gamma=False),
-            'Pearson': PearsonOWRCPD(n=6, m=2, tau=0.42, nu=0.72, k_conf=1,
+            'Pearson': PearsonOWRCPD(n=6, m=2, eta=0.42, nu=0.72, k_conf=1,
                                      reg_lambda=0.2, gamma=0.7, factor=2.25,
                                      dynamic_gamma=False, normalize_distance=True),
         }
@@ -262,7 +387,7 @@ class ExperimentTests(unittest.TestCase):
         self.assertEqual(settings['MMD'], dict(n=8, m=3, eta=0.11, nu=0.82,
                                               k_conf=2, gamma=0.25, factor=1.75,
                                               dynamic_gamma=False))
-        self.assertEqual(settings['Pearson'], dict(n=6, m=2, tau=0.42, nu=0.72,
+        self.assertEqual(settings['Pearson'], dict(n=6, m=2, eta=0.42, nu=0.72,
                                                   k_conf=1, reg_lambda=0.2, gamma=0.7,
                                                   factor=2.25, dynamic_gamma=False,
                                                   normalize_distance=True))
@@ -309,7 +434,7 @@ class ExperimentTests(unittest.TestCase):
         preprocessing = np.vstack([rng.normal(centers[d], 0.2, (20, 10)) for d in digits])
         evaluation = {d: rng.normal(centers[d], 0.2, (100, 10)) for d in digits}
         with patch.multiple(main_mnist, N=8, M=3, K_CONF=2, SAMPLES_PER_DIGIT=20,
-                            PCA_DIM=4, PEARSON_TAU=0.4, PEARSON_NU=0.7, MAX_DELAY=8):
+                            PCA_DIM=4, PEARSON_ETA=0.4, PEARSON_NU=0.7, MAX_DELAY=8):
             with patch.object(main_mnist, 'load_mnist_partitions',
                               return_value=(preprocessing, evaluation)):
                 with contextlib.redirect_stdout(io.StringIO()):
@@ -319,7 +444,7 @@ class ExperimentTests(unittest.TestCase):
             for model in run['models'].values():
                 self.assertEqual(model.t, 220)
                 self.assertEqual(len(model.X[0]), 4)
-            self.assertEqual(run['models']['Pearson'].tau, 0.4)
+            self.assertEqual(run['models']['Pearson'].eta, 0.4)
             self.assertEqual(run['models']['Pearson'].nu, 0.7)
             self.assertFalse(run['models']['Pearson'].normalize_distance)
             metrics = run['metrics']['Pearson']
@@ -349,9 +474,9 @@ class ExperimentTests(unittest.TestCase):
 
     def test_missing_mnist_threshold_fails_before_downloading(self):
         import main_mnist
-        with patch.object(main_mnist, 'PEARSON_TAU', None):
+        with patch.object(main_mnist, 'PEARSON_ETA', None):
             with patch.object(main_mnist, 'fetch_openml') as download:
-                with self.assertRaisesRegex(ValueError, 'Set PEARSON_TAU'):
+                with self.assertRaisesRegex(ValueError, 'Set PEARSON_ETA'):
                     main_mnist.main(show=False)
         download.assert_not_called()
 
@@ -361,13 +486,13 @@ class ExperimentTests(unittest.TestCase):
             with self.subTest(tier=module.__name__), patch.multiple(
                     module, N=8, M=3, K_CONF=2, SEGMENT_LENGTH=20,
                     SEEDS=(42,), MAX_DELAY=8, MMD_ETA=0.12, MMD_NU=0.9,
-                    PEARSON_TAU=0.4, PEARSON_NU=0.7):
+                    PEARSON_ETA=0.4, PEARSON_NU=0.7):
                 with contextlib.redirect_stdout(io.StringIO()):
                     result = module.main(show=False)
                 run = result['runs'][0]
                 self.assertEqual(run['models']['MMD'].eta, 0.12)
                 self.assertEqual(run['models']['MMD'].nu, 0.9)
-                self.assertEqual(run['models']['Pearson'].tau, 0.4)
+                self.assertEqual(run['models']['Pearson'].eta, 0.4)
                 self.assertEqual(run['models']['Pearson'].nu, 0.7)
                 self.assertEqual(run['models']['Pearson'].t, 240)
 

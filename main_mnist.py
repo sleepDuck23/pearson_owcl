@@ -26,7 +26,7 @@ PCA_IMAGES_PER_DIGIT = 500
 SPLIT_SEED = 2027
 EVALUATION_SEED = 42
 REG_LAMBDA = 0.1
-PEARSON_TAU = 0.4  # Arbitrary placeholder; adjust for this experiment.
+PEARSON_ETA = 0.4  # Arbitrary placeholder; adjust for this experiment.
 PEARSON_NU = 0.7  # Arbitrary placeholder; adjust for this experiment.
 MAX_DELAY = M + K_CONF
 # fetch_openml appends its own 'openml' subdirectory to data_home.
@@ -91,7 +91,7 @@ def build_models():
         'Pearson': PearsonOWRCPD(
             n=N,
             m=M,
-            tau=PEARSON_TAU,
+            eta=PEARSON_ETA,
             nu=PEARSON_NU,
             k_conf=K_CONF,
             reg_lambda=REG_LAMBDA,
@@ -107,7 +107,7 @@ def main(show=True):
     models = build_models()
     validate_thresholds(
         {'MMD': dict(detection=models['MMD'].eta, novelty=models['MMD'].nu),
-         'Pearson': dict(detection=models['Pearson'].tau, novelty=models['Pearson'].nu)},
+         'Pearson': dict(detection=models['Pearson'].eta, novelty=models['Pearson'].nu)},
         models['Pearson'].reg_lambda)
     preprocessing, evaluation_pools = load_mnist_partitions()
     print(f'Fitting PCA(d={PCA_DIM}) on separate preprocessing images...')

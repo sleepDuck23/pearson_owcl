@@ -18,7 +18,7 @@ PCA_D = 2
 SEQUENCE = (0, 1, 0, 2, 3, 2, 1, 3, 0, 2, 3)
 MMD_ETA = 0.06
 MMD_NU = 0.96
-PEARSON_TAU = 0.40
+PEARSON_ETA = 0.40
 PEARSON_NU = 0.71
 REG_LAMBDA = 1e-2
 
@@ -86,7 +86,7 @@ def build_models():
         'Pearson': PearsonOWRCPD(
             n=N,
             m=M,
-            tau=PEARSON_TAU,
+            eta=PEARSON_ETA,
             nu=PEARSON_NU,
             k_conf=K_CONF,
             reg_lambda=REG_LAMBDA,

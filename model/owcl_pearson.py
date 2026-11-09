@@ -88,7 +88,7 @@ def pearson_score(model, Z, X, W, mu_K, gamma, h=None):
 
 
 class PearsonOWRCPD:
-    def __init__(self, n, m, tau, nu, k_conf, reg_lambda=1e-3, gamma=0.1, factor=1.0, dynamic_gamma=True, normalize_distance=False):
+    def __init__(self, n, m, eta, nu, k_conf, reg_lambda=1e-3, gamma=0.1, factor=1.0, dynamic_gamma=True, normalize_distance=False):
         """
         Open-World Change-Point Detection with Recurrent Regime Recall.
         - Detection: Amortized O(n^2 + m^2) recursive Pearson Divergence (regularized RKHS second-moment operator).
@@ -103,7 +103,7 @@ class PearsonOWRCPD:
         validate_parameters(n, m, k_conf, gamma, factor, reg_lambda)
         self.n = n                  # Reference window size (and Classification window size)
         self.m = m                  # Analysis window size
-        self.tau = tau              # Detection threshold (Pearson Divergence)
+        self.eta = eta              # Detection threshold (Pearson Divergence)
         self.nu = nu                # Novelty threshold (Maximum allowed Pearson Divergence for a match)
         self.k_conf = k_conf        # Consecutive windows to confirm change
         self.reg_lambda = reg_lambda 
@@ -326,10 +326,10 @@ class PearsonOWRCPD:
                 self.state = "WARMUP_Y"
                 
         if np.isfinite(score):
-            self.consec = self.consec + 1 if score > self.tau else 0
+            self.consec = self.consec + 1 if score > self.eta else 0
             if self.consec >= self.k_conf:
                 self.global_changepoints.append(self.t)
-                print(f"\nTime {self.t}: *** CHANGE CONFIRMED *** (Div={score:.4f} > {self.tau})")
+                print(f"\nTime {self.t}: *** CHANGE CONFIRMED *** (Div={score:.4f} > {self.eta})")
                 self.consec = 0
                 self.X_prime = []
                 self.state = "COLLECT_PURE_WINDOW"

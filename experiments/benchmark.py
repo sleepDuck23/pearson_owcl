@@ -13,6 +13,7 @@ import numpy as np
 from threadpoolctl import threadpool_limits
 
 from experiments.evaluation import aggregate_metrics, comparison_table
+from experiments.runner import stream_description
 
 BENCHMARKS = {
     'gaussian': 'main_mmd_pearson',
@@ -67,14 +68,18 @@ def save_reports(report, output_dir):
             lines += [f"{name}: " + ', '.join(f'{key}={value}' for key, value in parameters.items()) + '.', '']
         pearson = settings['model_parameters']['Pearson']
         bound = 1 / pearson['reg_lambda']
-        if pearson['tau'] >= bound:
-            lines += [f"Pearson detection threshold {pearson['tau']} exceeds or equals its score bound "
+        if pearson['eta'] >= bound:
+            lines += [f"Pearson detection threshold {pearson['eta']} exceeds or equals its score bound "
                       f"{bound:g}; this configuration cannot confirm alarms.", '']
         lines += [
                   f"MMD detection/novelty: {thresholds['MMD']['detection']}/"
                   f"{thresholds['MMD']['novelty']}; Pearson detection/novelty: "
                   f"{thresholds['Pearson']['detection']}/{thresholds['Pearson']['novelty']}.", '',
                   comparison_table(benchmark['aggregate']), '']
+        for config in configs:
+            if config.get('stream_metadata') is not None:
+                lines += [f"Seed {config['seed']} distribution assignment:", '',
+                          stream_description(config['stream_metadata']), '']
     lines += ['## Execution environment', '',
               f"Python {report['environment']['python']}; NumPy {report['environment']['numpy']}; "
               f"scikit-learn {report['environment']['sklearn']}. BLAS thread limit: 1.", '']
