@@ -1,7 +1,8 @@
 """ICASSP section 5.2, T3: common mean and common variance."""
 
+import matplotlib
+matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
-
 from data.generation import generate_moment_matched_stream
 from model.owcl_mmd import OWR_CPD
 from model.owcl_pearson import PearsonOWRCPD
@@ -14,19 +15,19 @@ from experiments.runner import (
 N = 600
 M = 200
 K_CONF = 6
-SEGMENT_LENGTH = 700
+SEGMENT_LENGTH = 2000
 SEEDS = (42, 43, 44)
 RANDOMIZE_FAMILIES = True  # Assign Gaussian/Laplace/Exponential/Uniform to IDs per seed.
 
 # T1/T2 population values and all seeds are choices not specified in the PDF.
 MEANS = (0.0, 0.0, 0.0, 0.0)
 STDS = (1.0, 1.0, 1.0, 1.0)
-MMD_ETA = 0.04  # Arbitrary placeholder; adjust for this experiment.
-MMD_NU = 0.99  # Arbitrary placeholder; adjust for this experiment.
-PEARSON_ETA = 0.075  # Arbitrary placeholder; adjust for this experiment.
-PEARSON_NU = 0.1  # Arbitrary placeholder; adjust for this experiment.
-REG_LAMBDA = 0.1                # Pearson extension, not a reported ICASSP value.
-MAX_DELAY = M + K_CONF          # Explicit evaluation horizon, not a paper setting.
+MMD_ETA = 0.0225  
+MMD_NU = 0.99 
+PEARSON_ETA = 0.035  
+PEARSON_NU = 0.05  
+REG_LAMBDA = 0.1                
+MAX_DELAY = N + K_CONF          
 
 
 def build_models():
