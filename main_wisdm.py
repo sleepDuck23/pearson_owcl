@@ -7,36 +7,43 @@ from model.owcl_mmd import OWR_CPD
 from model.owcl_pearson import PearsonOWRCPD
 from experiments.runner import labels_for_segments, run_comparison
 
-N = 150
-M = 50
+N = 150  # Reference/recognition window in downsampled observations (all regimes).
+M = 50   # Analysis window in downsampled observations (all regimes).
 K_CONF = 6
 MAX_DELAY = M + K_CONF  # Inclusive tolerance in downsampled model observations.
 SEED = 42
 DOWNSAMPLE_RATE = 5
 USE_PCA = False
 PCA_D = 2
-SEQUENCE = (0, 1, 0, 2, 3, 2, 1, 3, 0, 2, 3)
+# Edit the regime order and raw observations per occurrence here.
+SEQUENCE = (0, 1, 2, 3, 1, 0, 3, 2, 0, 3, 1, 2)
+SEGMENT_LENGTH = 2500  # 500 model observations per occurrence at downsampling 5.
+# Synthetic regime ID -> (std, [mean_x, mean_y, mean_z]). These are Gaussian
+# surrogates with no mapping to activity names from real WISDM recordings.
+ACTIVITY_SPECS = {
+    0: (0.5, [1.0, 0.0, 9.8]),
+    1: (1.5, [0.0, 2.0, 9.8]),
+    2: (0.8, [0.5, 0.5, 9.8]),
+    3: (0.7, [-0.5, -0.5, 9.8]),
+    4: (0.1, [0.0, 0.0, 9.8]),
+    5: (0.1, [0.0, 9.8, 0.0]),
+    6: (0.1, [9.8, 0.0, 0.0]),
+}
 MMD_ETA = 0.06
 MMD_NU = 0.96
-PEARSON_ETA = 0.40
-PEARSON_NU = 0.71
-REG_LAMBDA = 1e-2
+PEARSON_ETA = 0.15
+PEARSON_NU = 0.25
+REG_LAMBDA = 0.1  # Pearson operator regularization.
 
 
-def generate_synthetic_activity_data(blocks_per_activity=None, seed=42):
+def generate_synthetic_activity_data(blocks_per_activity=None, seed=42, *, block_size=None):
     """Synthetic Gaussian activity surrogate; this does not load WISDM recordings."""
     print("Generating synthetic activity data (WISDM placeholder)...")
-    block_size = 2500
+    block_size = SEGMENT_LENGTH if block_size is None else block_size
+    if not isinstance(block_size, (int, np.integer)) or block_size < 1:
+        raise ValueError("block_size must be a positive integer")
     rng = np.random.RandomState(seed)
-    specifications = {
-        0: (0.5, [1.0, 0.0, 9.8]),
-        1: (1.5, [0.0, 2.0, 9.8]),
-        2: (0.8, [0.5, 0.5, 9.8]),
-        3: (0.7, [-0.5, -0.5, 9.8]),
-        4: (0.1, [0.0, 0.0, 9.8]),
-        5: (0.1, [0.0, 9.8, 0.0]),
-        6: (0.1, [9.8, 0.0, 0.0]),
-    }
+    specifications = ACTIVITY_SPECS
     counts = blocks_per_activity if blocks_per_activity is not None else dict.fromkeys(specifications, 1)
     activities = {}
     for act, count in sorted(counts.items()):
@@ -101,7 +108,8 @@ def build_models():
 def run_experiment(show=True, seed=SEED):
     models = build_models()
     counts = {act: SEQUENCE.count(act) for act in set(SEQUENCE)}
-    activities, block_size = generate_synthetic_activity_data(counts, seed=seed)
+    activities, block_size = generate_synthetic_activity_data(
+        counts, seed=seed, block_size=SEGMENT_LENGTH)
     stream, _ = build_stream(SEQUENCE, activities, block_size)
     labels = labels_for_segments(SEQUENCE, block_size)[::DOWNSAMPLE_RATE]
     stream = stream[::DOWNSAMPLE_RATE]

@@ -22,11 +22,14 @@ def download_and_extract_pamap2(data_dir="data/PAMAP2_Dataset"):
     else:
         print("PAMAP2 Dataset already exists locally. Skipping download.")
 
-def _load_activity_blocks(feature_columns, block_size, blocks_per_activity):
+def _load_activity_blocks(feature_columns, block_size, blocks_per_activity, activity_mapping=None):
     """Collect non-overlapping blocks from contiguous runs of subject101."""
     if not isinstance(block_size, (int, np.integer)) or block_size < 1:
         raise ValueError("block_size must be a positive integer")
-    mapping = {1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 12: 5, 13: 6}
+    mapping = ({1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 12: 5, 13: 6}
+               if activity_mapping is None else dict(activity_mapping))
+    if not mapping or len(set(mapping.values())) != len(mapping):
+        raise ValueError("Map each selected dataset activity to a distinct regime ID")
     counts = (dict.fromkeys(mapping.values(), 1) if blocks_per_activity is None
               else dict(blocks_per_activity))
     for act, count in counts.items():
@@ -70,12 +73,12 @@ def _load_activity_blocks(feature_columns, block_size, blocks_per_activity):
     return activities, block_size
 
 
-def load_pamap2_blocks(block_size=300, blocks_per_activity=None):
+def load_pamap2_blocks(block_size=300, blocks_per_activity=None, *, activity_mapping=None):
     """Hand acceleration (zero-based columns 4, 5, 6); no replay or padding."""
-    return _load_activity_blocks([4, 5, 6], block_size, blocks_per_activity)
+    return _load_activity_blocks([4, 5, 6], block_size, blocks_per_activity, activity_mapping)
 
 
-def load_pamap2_full_blocks(block_size=1500, blocks_per_activity=None):
+def load_pamap2_full_blocks(block_size=1500, blocks_per_activity=None, *, activity_mapping=None):
     """Heart rate and valid IMU channels, with causal within-run filling.
 
     Exclude the 12 orientation channels marked invalid by the dataset authors.
@@ -83,4 +86,4 @@ def load_pamap2_full_blocks(block_size=1500, blocks_per_activity=None):
     """
     invalid_orientation = set(range(16, 20)) | set(range(33, 37)) | set(range(50, 54))
     columns = [column for column in range(2, 54) if column not in invalid_orientation]
-    return _load_activity_blocks(columns, block_size, blocks_per_activity)
+    return _load_activity_blocks(columns, block_size, blocks_per_activity, activity_mapping)

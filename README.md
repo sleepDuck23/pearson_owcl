@@ -217,6 +217,37 @@ files themselves are not included in the repository. For PAMAP2, reduce the bloc
 size or requested activity repetitions if the selected recording cannot supply
 enough distinct contiguous blocks.
 
+PAMAP2 and the synthetic WISDM surrogate use the T experiments' recurrence order,
+mapped from T regime IDs 1–4 to their existing activity IDs 0–3:
+`0 → 1 → 2 → 3 → 1 → 0 → 3 → 2 → 0 → 3 → 1 → 2`.
+Each activity appears three times, giving 12 segments and 11 true changes.
+Returns consume distinct observations; segment lengths and preprocessing remain
+configured in each activity script.
+
+Edit `SEQUENCE` directly in `main_pamap2.py` or `main_wisdm.py`; the two mains
+keep independent literal sequences. `SEGMENT_LENGTH` in each main controls raw
+samples per activity occurrence (PAMAP2: 1,500; synthetic WISDM: 2,500, yielding
+500 observations after downsampling by five). `N` controls the reference and
+post-alarm recognition window; `M` controls the analysis window. These window
+sizes apply to every activity and are measured after preprocessing/downsampling.
+PAMAP2's `ACTIVITY_MAPPING` maps dataset activity IDs to the truth IDs in its
+sequence. Synthetic WISDM's `ACTIVITY_SPECS` assigns each truth ID a Gaussian
+standard deviation and three-dimensional mean; it has no real WISDM activity
+labels. Detector-assigned IDs are learned online and can differ from truth IDs.
+
+PAMAP2's `DOWNSAMPLE_RATE` controls its effective sampling rate from the original
+100 Hz: use 1 for 100 Hz, 2 for 50 Hz, 4 for 25 Hz, or 5 for 20 Hz. For factors
+above one, a causal FIR low-pass filter suppresses aliasing before decimation.
+Filtering uses only sensor observations, with no future samples or activity-label
+resets; filter latency remains in the measured detection delay. Labels are
+subsampled and change indices recomputed at the model's sampling rate.
+`SEGMENT_LENGTH` still counts raw 100 Hz samples, preserving activity durations.
+`N`, `M`, `K_CONF`, and `MAX_DELAY` count observations at the reduced rate, so
+their durations in seconds increase when their values are kept fixed. The script
+prints the effective frequency and model window durations, and rejects settings
+where initialization would extend beyond the first activity episode. Lower rates
+can suppress high-frequency noise, but their effect on detection must be measured.
+
 ### `model/`: online detection and regime memory
 
 | File | Objective and behavior |
