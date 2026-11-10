@@ -14,7 +14,7 @@ M = 40
 K_CONF = 6
 SAMPLES_PER_DIGIT = 300
 PCA_DIM = 50
-MMD_ETA = 0.06
+MMD_ETA = 0.05
 MMD_NU = 0.96
 SEQUENCES = {
     'A': (3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5),
@@ -26,8 +26,8 @@ PCA_IMAGES_PER_DIGIT = 500
 SPLIT_SEED = 2027
 EVALUATION_SEED = 42
 REG_LAMBDA = 0.1
-PEARSON_ETA = 0.4  # Arbitrary placeholder; adjust for this experiment.
-PEARSON_NU = 0.7  # Arbitrary placeholder; adjust for this experiment.
+PEARSON_ETA = 0.15  # Arbitrary placeholder; adjust for this experiment.
+PEARSON_NU = 0.15  # Arbitrary placeholder; adjust for this experiment.
 MAX_DELAY = M + K_CONF
 # fetch_openml appends its own 'openml' subdirectory to data_home.
 DATA_HOME = Path(__file__).resolve().parent / 'data'
