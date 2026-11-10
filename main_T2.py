@@ -1,7 +1,8 @@
 """ICASSP section 5.2, T2: common mean and distinct variances."""
 
+import matplotlib
+matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
-
 from data.generation import generate_moment_matched_stream
 from model.owcl_mmd import OWR_CPD
 from model.owcl_pearson import PearsonOWRCPD
@@ -21,12 +22,12 @@ RANDOMIZE_FAMILIES = True  # Assign Gaussian/Laplace/Exponential/Uniform to IDs 
 # T1/T2 population values and all seeds are choices not specified in the PDF.
 MEANS = (0.0, 0.0, 0.0, 0.0)
 STDS = (1.0, 2.0, 0.5, 3.0)
-MMD_ETA = 0.1  
+MMD_ETA = 0.04  
 MMD_NU = 0.99                 
-PEARSON_ETA = 0.15  
-PEARSON_NU = 0.15  
+PEARSON_ETA = 0.075  
+PEARSON_NU = 0.05 
 REG_LAMBDA = 0.1                
-MAX_DELAY = M + K_CONF          
+MAX_DELAY = N + K_CONF          
 
 
 def build_models():
