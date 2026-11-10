@@ -48,7 +48,7 @@ class Pamap2SamplingTests(unittest.TestCase):
             return activities, block_size
 
         with patch.multiple(pamap2, N=n, M=2, USE_PCA=False, SEQUENCE=(0, 1, 0),
-                            SEGMENT_LENGTH=11, DOWNSAMPLE_RATE=factor), \
+                            SEGMENT_LENGTH=11, DOWNSAMPLE_RATE=factor, RAW_SAMPLE_RATE_HZ=100), \
                 patch.object(pamap2, 'load_pamap2_full_blocks', side_effect=load_blocks), \
                 patch.object(pamap2, 'run_comparison', return_value={'config': {}}) as runner, \
                 contextlib.redirect_stdout(io.StringIO()):

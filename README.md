@@ -13,7 +13,7 @@ root (the directory containing this README):
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python3 -m pip install numpy matplotlib pandas scikit-learn
+python3 -m pip install numpy scipy matplotlib pandas scikit-learn
 ```
 
 On Windows, activate the environment with `.venv\Scripts\activate` instead.
@@ -30,7 +30,7 @@ It prints detection and recognition metrics and opens Matplotlib figures.
 Experiment mains print results and display plots without saving files by default.
 
 Run the individual main you are editing while tuning parameters.
-MNIST and PAMAP2 require internet access for their initial dataset downloads.
+MNIST, PAMAP2, and WISDM require internet access for their initial dataset downloads.
 
 ## Run the experiments
 
@@ -41,7 +41,7 @@ python3 main_T2.py           # §5.2: common mean, distinct variances
 python3 main_T3.py           # §5.2: common mean and variance
 python3 main_mnist.py        # §5.3: sequences A and B
 python3 main_pamap2.py       # Real PAMAP2 sensor recordings
-python3 main_wisdm.py        # Synthetic activity stream; WISDM placeholder
+python3 main_wisdm.py        # Real WISDM Activity Recognition v1.1 recordings
 ```
 
 Run one command at a time for the experiment you want. T1, T2, and T3 are
@@ -169,8 +169,8 @@ them to choose values. Window sizes and regularization affect score scales, so
 consider them together when choosing thresholds.
 
 Reusable synthetic generators, including the four T1/T2/T3 distribution families,
-live in `data/generation.py`. The Gaussian reference main and WISDM placeholder
-also contain their own experiment-specific sampling code. Each tier main defines its parameters and loops over its
+live in `data/generation.py`. The Gaussian reference main also contains its own
+experiment-specific sampling code. Each tier main defines its parameters and loops over its
 seeds. `experiments/runner.py` shares execution, plotting, and reporting only;
 `experiments/evaluation.py` computes metrics.
 
@@ -199,9 +199,9 @@ mathematical background.
 | [main_T3.py](main_T3.py) | Compares the same families with common population mean and variance, so differences concern distribution shape. Owns its parameters and runs its three seeds independently. |
 | [main_mnist.py](main_mnist.py) | Downloads MNIST through `fetch_openml`, separates PCA and evaluation images, fits a shared PCA representation, builds digit sequences A and B, and compares both detectors. Repeated digits consume fresh images, including across sequences. |
 | [main_pamap2.py](main_pamap2.py) | Builds a recurring activity stream from PAMAP2, currently using 40 sensor features and 1,500 observations per segment. Fits standardization on the initial reference window, optionally applies PCA, and runs and plots both detectors. |
-| [main_wisdm.py](main_wisdm.py) | Generates a synthetic three-dimensional Gaussian activity surrogate locally. Builds recurring activity blocks, downsamples by five, fits preprocessing on the initial reference window, and runs both detectors. It does not download or read WISDM recordings. |
+| [main_wisdm.py](main_wisdm.py) | Loads real WISDM Activity Recognition v1.1 accelerometer recordings from one participant. Builds recurring episodes from distinct contiguous blocks, optionally downsamples with causal filtering, fits preprocessing on the initial reference window, and runs both detectors on the same measurements. |
 | [README.md](README.md) | Setup, run instructions, repository map, parameter meanings, and evaluation conventions. |
-| [.gitignore](.gitignore) | Excludes Python caches, local environments, generated artifacts, and downloaded MNIST/PAMAP2 data from version control. |
+| [.gitignore](.gitignore) | Excludes Python caches, local environments, generated artifacts, and downloaded MNIST/PAMAP2/WISDM data from version control. |
 
 ### `data/`: generate observations and prepare downloaded data
 
@@ -209,15 +209,17 @@ mathematical background.
 |---|---|
 | [generation.py](data/generation.py) | Reusable synthetic generators. `generate_mean_shift_data()` creates Gaussian mean shifts; `generate_regime_stream()` varies Gaussian means and standard deviations; `sample_family()` samples the four T distribution families; `generate_moment_matched_stream()` validates tier moments, assigns families to regime IDs per seed, and assembles the recurring sequence and true change points. Optional metadata records the realized assignment and population moments. The first two helpers remain available but are not currently called by the mains. |
 | [manage_pamap2.py](data/manage_pamap2.py) | Downloads and extracts PAMAP2 if needed, reads `Protocol/subject101.dat`, maps activity labels, and takes distinct blocks from contiguous activity runs. Uses forward filling within each run and discards leading missing values. Provides a three-channel hand-acceleration loader and a 40-feature loader excluding invalid orientation channels. Raises an error if the requested distinct blocks are unavailable. |
+| [manage_wisdm.py](data/manage_wisdm.py) | Downloads the official WISDM AR v1.1 archive and preserves its documentation. Parses measured acceleration rows, selects one participant, and extracts disjoint blocks without crossing activity/participant changes, invalid records, backward timestamps, or configured timestamp gaps. Records source positions, timestamps, and a raw-file SHA256. |
 | `openml/` | Generated MNIST download cache managed by scikit-learn. OpenML supplies an existing dataset; this directory is not a generator or Python module. |
 | `PAMAP2_Dataset/` | Generated directory holding the extracted PAMAP2 recordings. The loader skips downloading when this directory already exists. |
+| `wisdm/` | Cached official WISDM archive, raw readings, and accompanying documentation. No generated observations. |
 
-The two download directories are created as needed and ignored by Git. Dataset
+The download directories are created as needed and ignored by Git. Dataset
 files themselves are not included in the repository. For PAMAP2, reduce the block
 size or requested activity repetitions if the selected recording cannot supply
 enough distinct contiguous blocks.
 
-PAMAP2 and the synthetic WISDM surrogate use the T experiments' recurrence order,
+PAMAP2 and WISDM use the T experiments' recurrence order,
 mapped from T regime IDs 1–4 to their existing activity IDs 0–3:
 `0 → 1 → 2 → 3 → 1 → 0 → 3 → 2 → 0 → 3 → 1 → 2`.
 Each activity appears three times, giving 12 segments and 11 true changes.
@@ -226,14 +228,35 @@ configured in each activity script.
 
 Edit `SEQUENCE` directly in `main_pamap2.py` or `main_wisdm.py`; the two mains
 keep independent literal sequences. `SEGMENT_LENGTH` in each main controls raw
-samples per activity occurrence (PAMAP2: 1,500; synthetic WISDM: 2,500, yielding
-500 observations after downsampling by five). `N` controls the reference and
+samples per activity occurrence (WISDM defaults to 700 measured rows with no
+downsampling). `N` controls the reference and
 post-alarm recognition window; `M` controls the analysis window. These window
 sizes apply to every activity and are measured after preprocessing/downsampling.
 PAMAP2's `ACTIVITY_MAPPING` maps dataset activity IDs to the truth IDs in its
-sequence. Synthetic WISDM's `ACTIVITY_SPECS` assigns each truth ID a Gaussian
-standard deviation and three-dimensional mean; it has no real WISDM activity
-labels. Detector-assigned IDs are learned online and can differ from truth IDs.
+sequence. WISDM's `ACTIVITY_MAPPING` maps original activity names to truth IDs.
+Detector-assigned IDs are learned online and can differ from truth IDs.
+
+The WISDM benchmark uses the [official Fordham Activity Recognition v1.1 release](https://www.cis.fordham.edu/wisdm/dataset.php),
+not the separate smartphone/smartwatch release. Each observation contains the
+phone accelerometer's x/y/z readings. In `main_wisdm.py`, edit `SUBJECT_ID`,
+`SEQUENCE`, `SEGMENT_LENGTH`, `ACTIVITY_MAPPING`, and `DOWNSAMPLE_RATE` directly.
+The defaults use participant 1, activity IDs 0=Walking, 1=Jogging, 2=Upstairs,
+3=Downstairs, and three non-overlapping 700-row episodes per activity. The mapping
+also offers 4=Sitting and 5=Standing, but not every participant has every activity
+or enough measurements for every requested sequence. Insufficient data raises
+an error; the loader never changes participants, pads, replays, interpolates, or
+generates observations to satisfy a request.
+
+WISDM's documented sampling rate is nominally 20 Hz; original timestamps can be
+irregular. Source order and equal timestamps are preserved. Runs break at invalid
+rows (including zero timestamps), backward timestamps, activity/participant
+changes, or gaps exceeding `MAX_GAP_SECONDS` (default 0.5 seconds). Optional
+downsampling applies a causal FIR filter before retaining rows; the default
+factor 1 uses the measured rows directly. Scaling and optional PCA fit only on
+the initial reference window. The returned `config.dataset` records the raw-file
+hash, activity mapping, participant, and source record/timestamp ranges for every
+episode. The Gaussian placeholder generator has been removed; prior results from
+it are synthetic results and must not be reported as WISDM performance.
 
 PAMAP2's `DOWNSAMPLE_RATE` controls its effective sampling rate from the original
 100 Hz: use 1 for 100 Hz, 2 for 50 Hz, 4 for 25 Hz, or 5 for 20 Hz. For factors
@@ -334,7 +357,7 @@ The inclusive maximum alarm delays, fixed before either model is scored, are:
 | T3 | 206 |
 | MNIST A and B | 46 |
 | PAMAP2 | 106 |
-| Synthetic activity / WISDM placeholder | 56 (after downsampling by 5) |
+| WISDM Activity Recognition v1.1 | 56 (original observations by default) |
 
 Each is `MAX_DELAY = M + K_CONF`, an evaluation choice rather than an ICASSP
 setting. Matching takes the earliest unused confirmed alarm at or after a change,
@@ -376,4 +399,6 @@ particular PAMAP2 retains Pearson `lambda=20`, `eta=0.80`, and `nu=0.71`.
 The detection score is bounded by `1/lambda=0.05`, so it cannot alarm at that
 threshold. Its runner explicitly disables the usual score-bound validation to
 measure the original configuration without silently replacing parameters.
-WISDM is a synthetic Gaussian activity surrogate, not a real-data WISDM result.
+WISDM now uses real recorded measurements. Its manually configured thresholds
+have not been calibrated for this dataset; replacing the data source does not
+establish a performance advantage.
