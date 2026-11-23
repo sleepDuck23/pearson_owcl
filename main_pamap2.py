@@ -10,7 +10,7 @@ from model.owcl_pearson import PearsonOWRCPD
 from experiments.runner import labels_for_segments, run_comparison
 
 RAW_SAMPLE_RATE_HZ = 50
-DOWNSAMPLE_RATE = 2  # 1 = 100 Hz, 2 = 50 Hz, 4 = 25 Hz, 5 = 20 Hz.
+DOWNSAMPLE_RATE = 1  # 1 = 100 Hz, 2 = 50 Hz, 4 = 25 Hz, 5 = 20 Hz.
 N = 600  # Reference/recognition window in model observations (after downsampling).
 M = 200  # Analysis window in model observations (after downsampling).
 K_CONF = 6

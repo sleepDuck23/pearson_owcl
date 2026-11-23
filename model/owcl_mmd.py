@@ -50,7 +50,7 @@ class OWR_CPD:
         self.nu = nu            # Novelty threshold (Coherence)
         self.k_conf = k_conf    # Consecutive windows required to confirm change
         self.gamma = gamma      # Updated by the heuristic only if dynamic_gamma=True
-        self.factor = factor    # Scaling factor for gamma adjustment (if needed)
+        self.factor = factor    # Scaling factor for gamma adjustment, 2.0 is the Maximum sensitivity to a small relative distance change at the median scale 
         
         # System State
         self.t = 0

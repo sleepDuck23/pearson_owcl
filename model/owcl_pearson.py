@@ -108,7 +108,7 @@ class PearsonOWRCPD:
         self.k_conf = k_conf        # Consecutive windows to confirm change
         self.reg_lambda = reg_lambda 
         self.gamma = gamma          # Initial gamma (remains static if dynamic_gamma=False)
-        self.factor = factor        # Optional scaling factor 
+        self.factor = factor        # Optional scaling factor, 2.0 is the Maximum sensitivity to a small relative distance change at the median scale 
         self.dynamic_gamma = dynamic_gamma # Boolean flag to toggle dynamic gamma computation
         self.normalize_distance = normalize_distance # Boolean flag to toggle hypersphere projection
         
