@@ -219,3 +219,7 @@ __marimo__/
 data/PAMAP2_Dataset/
 data/openml/
 data/wisdm/
+cwru/recordings/
+putemg/recordings/
+core50/recordings/
+tau/recordings/

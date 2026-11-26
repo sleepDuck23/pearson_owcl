@@ -13,7 +13,7 @@ root (the directory containing this README):
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python3 -m pip install numpy scipy matplotlib pandas scikit-learn
+python3 -m pip install numpy scipy matplotlib pandas scikit-learn Pillow
 ```
 
 On Windows, activate the environment with `.venv\Scripts\activate` instead.
@@ -30,7 +30,7 @@ It prints detection and recognition metrics and opens Matplotlib figures.
 Experiment mains print results and display plots without saving files by default.
 
 Run the individual main you are editing while tuning parameters.
-MNIST, PAMAP2, and WISDM require internet access for their initial dataset downloads.
+MNIST, PAMAP2, WISDM, CWRU, putEMG, CORe50, and TAU require internet access for their initial dataset downloads.
 
 ## Run the experiments
 
@@ -42,6 +42,10 @@ python3 main_T3.py           # §5.2: common mean and variance
 python3 main_mnist.py        # §5.3: sequences A and B
 python3 main_pamap2.py       # Real PAMAP2 sensor recordings
 python3 main_wisdm.py        # Real WISDM Activity Recognition v1.1 recordings
+python3 main_cwru.py         # Real CWRU bearing vibration recordings
+python3 main_putemg.py       # Real putEMG surface electromyography recordings
+python3 main_core50.py       # Real CORe50 RGB object recordings
+python3 main_tau.py          # Real TAU Urban Acoustic Scenes recordings
 ```
 
 Run one command at a time for the experiment you want. T1, T2, and T3 are
@@ -77,9 +81,9 @@ python3 -c "import main_T1; results = main_T1.main(show=False)"
 ```
 
 The returned dictionary contains the models and metrics (inside `runs` for T1/T2/T3
-and `sequences` for MNIST). PAMAP2 and WISDM expose `run_experiment()` instead;
-these functions accept `show=False` and return the same models/metrics dictionary.
-For a terminal-only run of either activity script, use a non-interactive backend:
+and `sequences` for MNIST). PAMAP2, WISDM, CWRU, putEMG, CORe50, and TAU expose
+`run_experiment(show=False)` for runs without plots and return the same models/metrics dictionary.
+For a terminal-only run of a script, use a non-interactive backend:
 
 ```bash
 MPLBACKEND=Agg python3 main_wisdm.py
@@ -198,17 +202,21 @@ mathematical background.
 | [main_T2.py](main_T2.py) | Compares the same families with a common mean and distinct variances. Owns its parameters and runs its three seeds independently. |
 | [main_T3.py](main_T3.py) | Compares the same families with common population mean and variance, so differences concern distribution shape. Owns its parameters and runs its three seeds independently. |
 | [main_mnist.py](main_mnist.py) | Downloads MNIST through `fetch_openml`, separates PCA and evaluation images, fits a shared PCA representation, builds digit sequences A and B, and compares both detectors. Repeated digits consume fresh images, including across sequences. |
-| [main_pamap2.py](main_pamap2.py) | Builds a recurring activity stream from PAMAP2, currently using 40 sensor features and 1,500 observations per segment. Fits standardization on the initial reference window, optionally applies PCA, and runs and plots both detectors. |
+| [main_pamap2.py](main_pamap2.py) | Builds a recurring activity stream from one PAMAP2 participant, using 40 raw sensor features and 2,000 raw observations per segment by default. Fits standardization on the initial reference window, optionally applies PCA, and runs both detectors. |
 | [main_wisdm.py](main_wisdm.py) | Loads real WISDM Activity Recognition v1.1 accelerometer recordings from one participant. Builds recurring episodes from distinct contiguous blocks, optionally downsamples with causal filtering, fits preprocessing on the initial reference window, and runs both detectors on the same measurements. |
+| [main_cwru.py](main_cwru.py) | Compares MMD and Pearson on recurring CWRU bearing conditions using features from drive-end vibration windows. |
+| [main_putemg.py](main_putemg.py) | Compares MMD and Pearson on recurring hand gestures using features from 24 forearm EMG channels. |
+| [main_core50.py](main_core50.py) | Compares MMD and Pearson on recurring object instances using features from chronological RGB clips. |
+| [main_tau.py](main_tau.py) | Compares MMD and Pearson on recurring urban acoustic scenes using log-mel features. |
 | [README.md](README.md) | Setup, run instructions, repository map, parameter meanings, and evaluation conventions. |
-| [.gitignore](.gitignore) | Excludes Python caches, local environments, generated artifacts, and downloaded MNIST/PAMAP2/WISDM data from version control. |
+| [.gitignore](.gitignore) | Excludes Python caches, local environments, generated artifacts, and downloaded MNIST/PAMAP2/WISDM/CWRU data from version control. |
 
 ### `data/`: generate observations and prepare downloaded data
 
 | File or generated directory | Objective and behavior |
 |---|---|
 | [generation.py](data/generation.py) | Reusable synthetic generators. `generate_mean_shift_data()` creates Gaussian mean shifts; `generate_regime_stream()` varies Gaussian means and standard deviations; `sample_family()` samples the four T distribution families; `generate_moment_matched_stream()` validates tier moments, assigns families to regime IDs per seed, and assembles the recurring sequence and true change points. Optional metadata records the realized assignment and population moments. The first two helpers remain available but are not currently called by the mains. |
-| [manage_pamap2.py](data/manage_pamap2.py) | Downloads and extracts PAMAP2 if needed, reads `Protocol/subject101.dat`, maps activity labels, and takes distinct blocks from contiguous activity runs. Uses forward filling within each run and discards leading missing values. Provides a three-channel hand-acceleration loader and a 40-feature loader excluding invalid orientation channels. Raises an error if the requested distinct blocks are unavailable. |
+| [manage_pamap2.py](data/manage_pamap2.py) | Downloads and extracts PAMAP2 if needed, reads the selected `Protocol/subject<ID>.dat`, maps activity labels, and takes distinct blocks from contiguous activity runs. Uses forward filling within each run and discards leading missing values. Provides a three-channel hand-acceleration loader and a 40-feature loader excluding invalid orientation channels. Raises an error if the requested distinct blocks are unavailable. |
 | [manage_wisdm.py](data/manage_wisdm.py) | Downloads the official WISDM AR v1.1 archive and preserves its documentation. Parses measured acceleration rows, selects one participant, and extracts disjoint blocks without crossing activity/participant changes, invalid records, backward timestamps, or configured timestamp gaps. Records source positions, timestamps, and a raw-file SHA256. |
 | `openml/` | Generated MNIST download cache managed by scikit-learn. OpenML supplies an existing dataset; this directory is not a generator or Python module. |
 | `PAMAP2_Dataset/` | Generated directory holding the extracted PAMAP2 recordings. The loader skips downloading when this directory already exists. |
@@ -232,8 +240,11 @@ samples per activity occurrence (WISDM defaults to 700 measured rows with no
 downsampling). `N` controls the reference and
 post-alarm recognition window; `M` controls the analysis window. These window
 sizes apply to every activity and are measured after preprocessing/downsampling.
-PAMAP2's `ACTIVITY_MAPPING` maps dataset activity IDs to the truth IDs in its
-sequence. WISDM's `ACTIVITY_MAPPING` maps original activity names to truth IDs.
+PAMAP2's `SUBJECT_ID` selects the participant and defaults to `106`, which had
+the most matched changes across both detectors with the saved settings. You can
+override it with `run_experiment(show=False, subject_id=101)`. PAMAP2's `ACTIVITY_MAPPING`
+maps dataset activity IDs to the truth IDs in its sequence. WISDM's
+`ACTIVITY_MAPPING` maps original activity names to truth IDs.
 Detector-assigned IDs are learned online and can differ from truth IDs.
 
 The WISDM benchmark uses the [official Fordham Activity Recognition v1.1 release](https://www.cis.fordham.edu/wisdm/dataset.php),
@@ -266,10 +277,110 @@ resets; filter latency remains in the measured detection delay. Labels are
 subsampled and change indices recomputed at the model's sampling rate.
 `SEGMENT_LENGTH` still counts raw 100 Hz samples, preserving activity durations.
 `N`, `M`, `K_CONF`, and `MAX_DELAY` count observations at the reduced rate, so
-their durations in seconds increase when their values are kept fixed. The script
+their durations in seconds increase when their values are kept fixed. PAMAP2 scores
+alarms with an inclusive tolerance of `N + K_CONF` observations. The script
 prints the effective frequency and model window durations, and rejects settings
 where initialization would extend beyond the first activity episode. Lower rates
 can suppress high-frequency noise, but their effect on detection must be measured.
+
+### `cwru/` bearing vibration data and experiment
+
+[cwru/data.py](cwru/data.py) downloads and caches the original MATLAB files in
+`cwru/recordings/`. You can also place the files there manually, using their
+numeric filenames. The default configuration uses the drive-end accelerometer
+at 48 kHz and 0 HP. All three faults have a diameter of 0.007 inches.
+[CWRU normal baseline](https://engineering.case.edu/bearingdatacenter/normal-baseline-data) ·
+[CWRU 48 kHz fault recordings](https://engineering.case.edu/bearingdatacenter/48k-drive-end-bearing-fault-data) ·
+[Smith and Randall, Appendix A](https://doi.org/10.1016/j.ymssp.2015.04.021)
+
+| Regime | Condition | Default recording |
+|---:|---|---|
+| 0 | Healthy | `97.mat` |
+| 1 | Inner-race fault | `109.mat` |
+| 2 | Ball fault | `122.mat` |
+| 3 | Outer-race fault at 6 o’clock | `135.mat` |
+
+The experiment joins separate laboratory recordings in the same recurrence order
+as PAMAP2. Each return takes the next unused contiguous block from its condition.
+Each 2,048-sample window yields one row with log RMS, crest factor, and spectral
+centroid. By default, an episode has 36 rows (1.536 seconds). Scaling uses the
+initial reference observations, and the shared evaluator counts detection delays
+in feature rows of about 42.7 ms each. The returned `config.episode_sources`
+records the file and raw sample interval for every episode.
+
+Set `MOTOR_LOAD_HP` (0–3), `SEQUENCE`, `WINDOW_SAMPLES`, `SEGMENT_LENGTH`, and the
+model parameters in `main_cwru.py`. The thresholds are starting values for manual
+tuning. To run without plotting, use
+`python3 -c "import main_cwru; main_cwru.run_experiment(show=False)"`.
+
+### `putemg/` hand-gesture data and experiment
+
+putEMG contains forearm surface electromyography recordings from 44 participants
+performing seven active hand gestures and idle. The authors sampled 24 EMG
+channels at 5,120 Hz and estimated the `TRAJ_GT` gesture labels from synchronized
+video. The dataset is published under CC BY-NC 4.0. [putEMG dataset paper](https://doi.org/10.3390/s19163548)
+
+[putemg/data.py](putemg/data.py) downloads one official CSV archive (about 67 MiB
+for the default recording) and caches it in `putemg/recordings/`. You can also
+place the official ZIP or its extracted CSV there. Set `RECORDING` in
+`main_putemg.py` to the filename stem, `SEQUENCE` to the desired gesture IDs, and
+`WINDOW_SAMPLES` and `SEGMENT_LENGTH` to the desired window and episode sizes.
+The default is participant `03`'s first `repeats_long` trial and the same
+12-episode sequence as CWRU, using the putEMG codes 0 (idle), 1 (fist), 2 (flexion),
+and 3 (extension). The loader also accepts the pinch gesture codes 6 through 9.
+
+Each episode uses the middle of a distinct, contiguous `TRAJ_GT` run. Every
+256-sample window yields one row of 24 log RMS features after removing each
+channel's window mean. The default feature rate is 20 rows/s, and 36 rows make a
+1.8-second episode. The scaler fits on the initial reference rows. The 11 scored
+change points are the joins between these reordered episodes. Returned
+`config.episode_sources` records the source sample and time ranges, and the
+thresholds in `main_putemg.py` are starting values for manual tuning.
+
+### `core50/` object video data and experiment
+
+CORe50 contains 50 household objects across 10 categories, recorded at 20 fps
+in 11 sessions with varying backgrounds and lighting. The published dataset
+contains 164,866 cropped 128×128 RGB-D frames. [CORe50 dataset and paper](https://proceedings.mlr.press/v78/lomonaco17a.html)
+
+[core50/data.py](core50/data.py) reads RGB PNGs from the original archive. A first
+run fetches the ZIP directory and the requested object recordings through HTTP
+range requests, then caches each track under `core50/recordings/`. For a local
+copy, place `core50_128x128.zip` or the extracted `core50_128x128/` directory in
+`core50/recordings/`, or point `DATA_DIR` to the dataset. [CORe50 downloads](https://vlomonaco.github.io/core50/#download)
+
+The default session is `s1`. Ground truth uses the official object instance IDs
+1 (plug adapter), 11 (scissors), 21 (can), and 41 (cup). Each 60-frame episode
+uses the next unused contiguous clip of the requested object. A frame becomes
+one feature row of 192 values by averaging it to 8×8 RGB pixels and scaling the
+values to `[0, 1]`. The 11 scored changes occur at the joins between the 12
+episodes. These results measure object switches and returns within one session.
+The returned `config.episode_sources` gives the exact frame range for each clip.
+Edit `SESSION`, `SEQUENCE`, `SEGMENT_LENGTH`, and the detector settings in
+`main_core50.py` to change the experiment.
+
+### `tau/` urban acoustic scene data and experiment
+
+TAU Urban Acoustic Scenes 2020 Mobile Development v2 contains roughly 64 hours
+of audio across ten scene classes. The release provides 10-second, mono,
+44.1 kHz WAV recordings and metadata for each clip's scene, location, and device.
+[Official TAU release](https://zenodo.org/records/3819968) · [DCASE recording setup](https://dcase.community/challenge2020/task-acoustic-scene-classification)
+
+The default benchmark uses device A in Barcelona and visits four scenes, airport,
+metro, park, and street traffic, three times each. Each episode comes from a
+distinct WAV file, with the loader using different locations for each scene
+when available. The experiment scores the 11 joins between the 12 clips.
+Each 100 ms non-overlapping window yields 24 log-mel band energies. The scaler
+fits on the initial reference observations and both detectors receive 10 feature
+rows per second. `config.episode_sources` records the WAV filename, location,
+device, and raw sample range behind each episode.
+
+[tau/data.py](tau/data.py) caches the official metadata and selected WAV files
+under `tau/recordings/`. It uses HTTP range requests to read individual WAVs from
+the audio ZIPs. To use local data, place the official `.meta.zip` and audio ZIPs
+in `tau/recordings/`, or point `DATA_DIR` to an extracted release containing
+`meta.csv` and `audio/`. Edit `CITY`, `DEVICE`, `SEQUENCE`, `WINDOW_SAMPLES`,
+`SEGMENT_LENGTH`, and the detector settings in `main_tau.py`.
 
 ### `model/`: online detection and regime memory
 

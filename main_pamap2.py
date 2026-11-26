@@ -9,12 +9,13 @@ from model.owcl_mmd import OWR_CPD
 from model.owcl_pearson import PearsonOWRCPD
 from experiments.runner import labels_for_segments, run_comparison
 
-RAW_SAMPLE_RATE_HZ = 50
+SUBJECT_ID = 106  # Highest combined detection count with the default settings.
+RAW_SAMPLE_RATE_HZ = 100
 DOWNSAMPLE_RATE = 1  # 1 = 100 Hz, 2 = 50 Hz, 4 = 25 Hz, 5 = 20 Hz.
 N = 600  # Reference/recognition window in model observations (after downsampling).
-M = 200  # Analysis window in model observations (after downsampling).
+M = 100  # Analysis window in model observations (after downsampling).
 K_CONF = 6
-MAX_DELAY = M + K_CONF  # Inclusive tolerance in downsampled model observations.
+MAX_DELAY = N + K_CONF  # Inclusive tolerance in downsampled model observations.
 USE_PCA = True
 PCA_D = 3
 # Edit the activity order and observations per occurrence here.
@@ -32,9 +33,9 @@ ACTIVITY_MAPPING = {
     13: 6,  # Descending stairs
 }
 MMD_ETA = 0.95
-MMD_NU = 0.2
-PEARSON_ETA = 0.35
-PEARSON_NU = 0.25
+MMD_NU = 0.95
+PEARSON_ETA = 0.45
+PEARSON_NU = 0.35
 REG_LAMBDA = 1.0  # Pearson operator regularization.
 
 
@@ -107,12 +108,13 @@ def build_models():
     }
 
 
-def run_experiment(show=True):
+def run_experiment(show=True, *, subject_id=None):
+    subject_id = SUBJECT_ID if subject_id is None else subject_id
     models = build_models()
     counts = {act: SEQUENCE.count(act) for act in set(SEQUENCE)}
     activities, block_size = load_pamap2_full_blocks(
         block_size=SEGMENT_LENGTH, blocks_per_activity=counts,
-        activity_mapping=ACTIVITY_MAPPING)
+        activity_mapping=ACTIVITY_MAPPING, subject_id=subject_id)
     stream, _ = build_stream(SEQUENCE, activities, block_size)
     stream = downsample_stream(stream, DOWNSAMPLE_RATE)
     labels = labels_for_segments(SEQUENCE, block_size)[::DOWNSAMPLE_RATE]
@@ -136,10 +138,10 @@ def run_experiment(show=True):
         processed = PCA(n_components=PCA_D, random_state=42).fit(processed[:N]).transform(processed)
     # Evaluate the manually configured thresholds without automatic retuning.
     result = run_comparison(
-        processed, true_cps, labels, title=f'PAMAP2 subject101, {sample_rate_hz:g} Hz',
+        processed, true_cps, labels, title=f'PAMAP2 subject{subject_id}, {sample_rate_hz:g} Hz',
         models=models, max_delay=MAX_DELAY, show=show,
         check_score_bounds=False)
-    result['config'].update(raw_sample_rate_hz=RAW_SAMPLE_RATE_HZ,
+    result['config'].update(subject_id=subject_id, raw_sample_rate_hz=RAW_SAMPLE_RATE_HZ,
                             sample_rate_hz=sample_rate_hz,
                             downsample_rate=DOWNSAMPLE_RATE,
                             raw_segment_length=SEGMENT_LENGTH,

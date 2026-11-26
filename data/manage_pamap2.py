@@ -22,10 +22,14 @@ def download_and_extract_pamap2(data_dir="data/PAMAP2_Dataset"):
     else:
         print("PAMAP2 Dataset already exists locally. Skipping download.")
 
-def _load_activity_blocks(feature_columns, block_size, blocks_per_activity, activity_mapping=None):
-    """Collect non-overlapping blocks from contiguous runs of subject101."""
+def _load_activity_blocks(feature_columns, block_size, blocks_per_activity, activity_mapping=None,
+                          *, subject_id=101):
+    """Collect non-overlapping blocks from contiguous runs of one protocol subject."""
     if not isinstance(block_size, (int, np.integer)) or block_size < 1:
         raise ValueError("block_size must be a positive integer")
+    if (not isinstance(subject_id, (int, np.integer))
+            or isinstance(subject_id, (bool, np.bool_)) or not 101 <= subject_id <= 109):
+        raise ValueError("subject_id must be a PAMAP2 participant ID from 101 to 109")
     mapping = ({1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 12: 5, 13: 6}
                if activity_mapping is None else dict(activity_mapping))
     if not mapping or len(set(mapping.values())) != len(mapping):
@@ -36,7 +40,7 @@ def _load_activity_blocks(feature_columns, block_size, blocks_per_activity, acti
         if act not in mapping.values() or not isinstance(count, (int, np.integer)) or count < 1:
             raise ValueError("Activity IDs and block counts must be valid")
     download_and_extract_pamap2()
-    file_path = "data/PAMAP2_Dataset/Protocol/subject101.dat"
+    file_path = f"data/PAMAP2_Dataset/Protocol/subject{subject_id}.dat"
     print(f"Parsing {file_path}...")
     df = pd.read_csv(file_path, sep=r"\s+", header=None,
                      usecols=[0, 1] + list(feature_columns))
@@ -66,19 +70,22 @@ def _load_activity_blocks(feature_columns, block_size, blocks_per_activity, acti
     for act, chunks in pools.items():
         if len(chunks) != counts[act]:
             raise ValueError(
-                f"Activity {act} needs {counts[act]} distinct contiguous blocks "
+                f"Subject {subject_id}, activity {act} needs {counts[act]} distinct contiguous blocks "
                 f"of {block_size} samples; found {len(chunks)}. "
                 "Reduce the sequence/block size or use additional recordings.")
         activities[act] = np.vstack(chunks)
     return activities, block_size
 
 
-def load_pamap2_blocks(block_size=300, blocks_per_activity=None, *, activity_mapping=None):
+def load_pamap2_blocks(block_size=300, blocks_per_activity=None, *, activity_mapping=None,
+                       subject_id=101):
     """Hand acceleration (zero-based columns 4, 5, 6); no replay or padding."""
-    return _load_activity_blocks([4, 5, 6], block_size, blocks_per_activity, activity_mapping)
+    return _load_activity_blocks([4, 5, 6], block_size, blocks_per_activity, activity_mapping,
+                                 subject_id=subject_id)
 
 
-def load_pamap2_full_blocks(block_size=1500, blocks_per_activity=None, *, activity_mapping=None):
+def load_pamap2_full_blocks(block_size=1500, blocks_per_activity=None, *, activity_mapping=None,
+                            subject_id=101):
     """Heart rate and valid IMU channels, with causal within-run filling.
 
     Exclude the 12 orientation channels marked invalid by the dataset authors.
@@ -86,4 +93,5 @@ def load_pamap2_full_blocks(block_size=1500, blocks_per_activity=None, *, activi
     """
     invalid_orientation = set(range(16, 20)) | set(range(33, 37)) | set(range(50, 54))
     columns = [column for column in range(2, 54) if column not in invalid_orientation]
-    return _load_activity_blocks(columns, block_size, blocks_per_activity, activity_mapping)
+    return _load_activity_blocks(columns, block_size, blocks_per_activity, activity_mapping,
+                                 subject_id=subject_id)
